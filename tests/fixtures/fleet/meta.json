@@ -1,0 +1,6 @@
+{
+  "owner": "myronccai",
+  "prefix": "loup-cmd-",
+  "recorded_at": "2026-10-20 07:41 UTC",
+  "source": "the GitHub REST API through `gh api` (authenticated) and shallow `git` clones"
+}

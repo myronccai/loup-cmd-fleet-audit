@@ -1,0 +1,40 @@
+@mode(host.dual)
+
+# Reads the status table of the series roadmap (its section 6):
+#
+#   ## 6. Status
+#   | ID | Repo | Created | Spec | CI green | Done |
+#   |---|---|---|---|---|---|
+#   | L01 | loup-cmd-echo | ☐ | ☐ | ☐ | ☐ |
+
+pub struct Planned {
+    pub id: string;
+    pub repo: string;
+}
+
+# The (ID, repository) rows of the roadmap's status section, in order.
+pub func planned_repos(text: string): list[Planned] {
+    var rows: list[Planned] = [];
+    var inside = false;
+    for (raw in text.split("\n")) {
+        let line = raw.trim();
+        if (line.startsWith("## ")) {
+            inside = line.startsWith("## 6.") or line == "## Status";
+            continue;
+        }
+        if (!inside or !line.startsWith("|")) {
+            continue;
+        }
+        let cells = line.split("|");
+        if (cells.len() < 4) {
+            continue;
+        }
+        let id = cells[1].trim();
+        let repo = cells[2].trim();
+        if (id == "ID" or id.startsWith("-") or repo.len() == 0) {
+            continue;
+        }
+        rows.push(Planned(id = id, repo = repo));
+    }
+    return rows;
+}

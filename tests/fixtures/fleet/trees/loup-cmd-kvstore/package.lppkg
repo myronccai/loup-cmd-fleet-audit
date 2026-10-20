@@ -1,0 +1,16 @@
+name = "kvstore"
+version = "0.1.0"
+loup = "1.26.0"
+authors = []
+
+[build]
+entry = "source/main.lphc"
+delivery = "cli"
+profile = "release"
+
+[dependencies]
+
+[test]
+pattern = "**/*_test.lphc"
+parallel = true
+timeout = 60

@@ -1,0 +1,70 @@
+@mode(host.scripted)
+
+from debug.assert import (expect, expectEq);
+from ..lib.facts import (RepoFacts, RepoInfo, RunInfo, empty_tree, no_run);
+from ..lib.tree import (read_tree);
+from ..lib.checks import (Audit, audit);
+from ..lib.roadmap import (Planned);
+from ..lib.report import (ReportMeta, render_report, summary_line, roadmap_table);
+
+func audited(name: string, tree: string, conclusion: string): Audit {
+    let info = RepoInfo(name = name, description = "d", default_branch = "main", url = "https://github.com/myronccai/" + name, topics = ["loup", "loup-example", "loup-linux-command"]);
+    let run = RunInfo(id = 5, status = "completed", conclusion = conclusion, url = "https://github.com/myronccai/" + name + "/actions/runs/5", created_at = "");
+    return audit(RepoFacts(info = info, run_state = "found", run = run, run_error = "", tree_state = "found", tree = read_tree("tests/fixtures/fleet/trees/" + tree), tree_error = ""));
+}
+
+let META: ReportMeta = ReportMeta(owner = "myronccai", prefix = "loup-cmd-", source = "test data", when = "2026-10-20 08:00 UTC");
+
+func test_summary_line(): void {
+    expectEq(summary_line([audited("loup-cmd-echo", "loup-cmd-echo", "success")]), "**1 repository: 1 done, 0 with problems.**", "one");
+    expectEq(summary_line([]), "**0 repositories: 0 done, 0 with problems.**", "none");
+}
+
+func test_full_report(): void {
+    let audits = [audited("loup-cmd-echo", "loup-cmd-echo", "success"), audited("loup-cmd-cut", "loup-cmd-cut", "failure")];
+    let want = [
+        "# loup-cmd fleet audit",
+        "",
+        "Repositories `loup-cmd-*` of [myronccai](https://github.com/myronccai), 2026-10-20 08:00 UTC.",
+        "Data: test data.",
+        "",
+        "**2 repositories: 1 done, 1 with problems.**",
+        "",
+        "| Repository | Group | Version | Loup | description | topics | todos | pin | version | spec | readme | ci | license |",
+        "|---|---|---|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|",
+        "| [loup-cmd-echo](https://github.com/myronccai/loup-cmd-echo) | linux-command | 0.1.0 | 1.26.0 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | [✓](https://github.com/myronccai/loup-cmd-echo/actions/runs/5) | ✗ |",
+        "| [loup-cmd-cut](https://github.com/myronccai/loup-cmd-cut) | linux-command | 0.1.0 | 1.26.0 | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ✓ | [✗](https://github.com/myronccai/loup-cmd-cut/actions/runs/5) | ✗ |",
+        "",
+        "✓ pass, ✗ fail, ? unknown. A repository is done when every check but `license` passes.",
+        "",
+        "## Problems",
+        "",
+        "- loup-cmd-cut: pin: package.lppkg loup 1.26.0, ci.yml LOUP_VERSION 1.25.1",
+        "- loup-cmd-cut: ci: latest run failure (run 5)",
+        "",
+        "## Warnings",
+        "",
+        "- license: no LICENSE file in any of the 2 repositories",
+        "",
+    ].join("\n");
+    expectEq(render_report(META, audits, [], false), want, "report");
+}
+
+func test_empty_fleet(): void {
+    let text = render_report(META, [], [], false);
+    expect(text.contains("**0 repositories: 0 done, 0 with problems.**\n\n## Problems\n\nNone."), "no table");
+}
+
+func test_roadmap_table(): void {
+    let audits = [audited("loup-cmd-echo", "loup-cmd-echo", "success"), audited("loup-cmd-extra", "loup-cmd-md", "success")];
+    let planned = [Planned(id = "L01", repo = "loup-cmd-echo"), Planned(id = "L02", repo = "loup-cmd-cat")];
+    let want = [
+        "| ID | Repo | Created | Spec | CI green | Done |",
+        "|---|---|---|---|---|---|",
+        "| L01 | loup-cmd-echo | ☑ | ☑ | ☑ | ☑ |",
+        "| L02 | loup-cmd-cat | ☐ | ☐ | ☐ | ☐ |",
+        "",
+        "Created 1 of 2. Not in the roadmap: loup-cmd-extra.",
+    ].join("\n");
+    expectEq(roadmap_table(audits, planned), want, "table");
+}

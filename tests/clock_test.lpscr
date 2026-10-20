@@ -1,0 +1,10 @@
+@mode(host.scripted)
+
+from debug.assert import (expectEq);
+from ..lib.clock import (utc_stamp);
+
+func test_utc_stamp(): void {
+    expectEq(utc_stamp(0), "1970-01-01 00:00 UTC", "epoch");
+    expectEq(utc_stamp(1792480092), "2026-10-20 07:08 UTC", "2026");
+    expectEq(utc_stamp(951782400), "2000-02-29 00:00 UTC", "leap day");
+}

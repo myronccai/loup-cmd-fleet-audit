@@ -1,0 +1,33 @@
+@mode(host.scripted)
+
+from debug.assert import (expectEq);
+from ..lib.facts import (toml_value, ci_loup_version, app_version, readme_section);
+
+let MANIFEST: string = "name = \"echo\"\nversion = \"0.1.0\"  # comment\nloup = \"1.26.0\"\nloupx = \"9\"\n\n[build]\nversion = \"9.9.9\"\n";
+
+func test_toml_value(): void {
+    expectEq(toml_value(MANIFEST, "name"), "echo", "name");
+    expectEq(toml_value(MANIFEST, "version"), "0.1.0", "value with a comment, top level only");
+    expectEq(toml_value(MANIFEST, "loup"), "1.26.0", "not confused with loupx");
+    expectEq(toml_value(MANIFEST, "entry"), "", "missing");
+    expectEq(toml_value("", "loup"), "", "empty text");
+}
+
+func test_ci_loup_version(): void {
+    expectEq(ci_loup_version("env:\n      LOUP_VERSION: \"1.26.0\"\n"), "1.26.0", "quoted");
+    expectEq(ci_loup_version("  LOUP_VERSION: 1.25.1\n"), "1.25.1", "bare");
+    expectEq(ci_loup_version("run: echo ${{ env.LOUP_VERSION }}\n"), "", "a use, not a definition");
+}
+
+func test_app_version(): void {
+    expectEq(app_version("pub const APP_VERSION: string = \"0.1.0\";\n"), "0.1.0", "typed const");
+    expectEq(app_version("let APP_VERSION = \"2.0.0\";"), "2.0.0", "untyped");
+    expectEq(app_version("# APP_VERSION must match the manifest\n"), "", "a comment");
+    expectEq(app_version("nothing here"), "", "absent");
+}
+
+func test_readme_section(): void {
+    expectEq(readme_section("# x\n\n## Differences from GNU echo\n"), "Differences from GNU echo", "command");
+    expectEq(readme_section("## Usage\n## What this example shows\n"), "What this example shows", "project");
+    expectEq(readme_section("## Usage\n### Differences from x\n"), "", "only level-2 headings");
+}

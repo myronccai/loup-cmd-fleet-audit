@@ -1,0 +1,132 @@
+@mode(host.scripted)
+
+# Reading GitHub REST API responses (the JSON `gh api` and `curl` return).
+# host.scripted, like collect.lpscr: parsed JSON is `Any`, which host.dual
+# modules flag with a warning on every run.
+
+from system.json import (parse);
+from .facts import (RepoInfo, RunInfo, no_run);
+
+# The outcome of looking up a repository's latest run: state "found" (with
+# the run), "none" (no runs yet) or "unknown" (with the error).
+pub struct RunLookup {
+    pub state: string;
+    pub run: RunInfo;
+    pub error: string;
+}
+
+func text_of(obj: dict[string, Any], key: string): string {
+    match obj.get(key) {
+        Some(v) => {
+            return if (v is string) { v as string } else { "" };
+        },
+        None => {
+            return "";
+        },
+    }
+}
+
+func flag_of(obj: dict[string, Any], key: string): bool {
+    match obj.get(key) {
+        Some(v) => {
+            return v is bool and (v as bool);
+        },
+        None => {
+            return false;
+        },
+    }
+}
+
+func int_of(obj: dict[string, Any], key: string): int {
+    match obj.get(key) {
+        Some(v) => {
+            return if (v is int) { v as int } else { 0 };
+        },
+        None => {
+            return 0;
+        },
+    }
+}
+
+# The message of an API error document (`{"message": "Not Found", ...}`),
+# or a description of an unexpected document.
+func error_text(doc: Any, expected: string): string {
+    if (doc is dict[string, Any]) {
+        let message = text_of(doc as dict[string, Any], "message");
+        if (message.len() > 0) {
+            return message;
+        }
+    }
+    return "unexpected response (expected " + expected + ")";
+}
+
+# One page of `GET /users/OWNER/repos`: its repository objects, or the error.
+pub func parse_repo_page(text: string): Result[list[Any], string] {
+    let doc = match parse(text) {
+        Ok(v) => v,
+        Err(msg) => { return Err("bad JSON from the API: " + msg); },
+    };
+    if (doc is list[Any]) {
+        return Ok(doc as list[Any]);
+    }
+    return Err(error_text(doc, "a list of repositories"));
+}
+
+# Whether a repository object belongs to the audit: the name has the
+# prefix, and it is neither a template nor archived.
+pub func wanted(repo: Any, prefix: string): bool {
+    if (!(repo is dict[string, Any])) {
+        return false;
+    }
+    let obj = repo as dict[string, Any];
+    return text_of(obj, "name").startsWith(prefix) and !flag_of(obj, "is_template") and !flag_of(obj, "archived");
+}
+
+pub func repo_info(repo: Any): RepoInfo {
+    let obj = repo as dict[string, Any];
+    var topics: list[string] = [];
+    match obj.get("topics") {
+        Some(v) => {
+            if (v is list[Any]) {
+                for (t in v as list[Any]) {
+                    if (t is string) {
+                        topics.push(t as string);
+                    }
+                }
+            }
+        },
+        None => {},
+    }
+    let branch = text_of(obj, "default_branch");
+    return RepoInfo(
+        name = text_of(obj, "name"),
+        description = text_of(obj, "description"),
+        default_branch = if (branch.len() == 0) { "main" } else { branch },
+        url = text_of(obj, "html_url"),
+        topics = topics,
+    );
+}
+
+# `GET /repos/OWNER/NAME/actions/runs?branch=B&per_page=1`: the latest run.
+pub func parse_latest_run(text: string): RunLookup {
+    let doc = match parse(text) {
+        Ok(v) => v,
+        Err(msg) => { return RunLookup(state = "unknown", run = no_run(), error = "bad JSON from the API: " + msg); },
+    };
+    if (!(doc is dict[string, Any]) or !(doc as dict[string, Any]).containsKey("workflow_runs")) {
+        return RunLookup(state = "unknown", run = no_run(), error = error_text(doc, "workflow runs"));
+    }
+    let runs = (doc as dict[string, Any])["workflow_runs"];
+    if (!(runs is list[Any]) or (runs as list[Any]).len() == 0) {
+        return RunLookup(state = "none", run = no_run(), error = "");
+    }
+    let first = (runs as list[Any])[0] as dict[string, Any];
+    let run = RunInfo(
+        id = int_of(first, "id"),
+        status = text_of(first, "status"),
+        conclusion = text_of(first, "conclusion"),
+        url = text_of(first, "html_url"),
+        created_at = text_of(first, "created_at"),
+    );
+    return RunLookup(state = "found", run = run, error = "");
+}

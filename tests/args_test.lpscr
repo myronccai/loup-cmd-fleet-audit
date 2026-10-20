@@ -1,0 +1,46 @@
+@mode(host.scripted)
+
+from debug.assert import (expect, expectEq);
+from ..lib.args import (Options, parse_args);
+
+func ok(argv: list[string]): Options {
+    return parse_args(argv).unwrap();
+}
+
+func err(argv: list[string]): string {
+    return match parse_args(argv) {
+        Ok(o) => "parsed",
+        Err(msg) => msg,
+    };
+}
+
+func test_defaults(): void {
+    let o = ok([]);
+    expectEq(o.owner, "myronccai", "owner");
+    expectEq(o.prefix, "loup-cmd-", "prefix");
+    expectEq(o.roadmap + o.fixtures + o.record + o.output, "", "no files");
+    expect(!o.help and !o.version, "flags");
+}
+
+func test_value_forms(): void {
+    expectEq(ok(["-o", "someone"]).owner, "someone", "separate");
+    expectEq(ok(["-osomeone"]).owner, "someone", "attached");
+    expectEq(ok(["--owner=someone"]).owner, "someone", "long =");
+    expectEq(ok(["--prefix", "loup-"]).prefix, "loup-", "long separate");
+    let o = ok(["-r", "ROADMAP.md", "-f", "fx", "--output", "out.md"]);
+    expectEq(o.roadmap + " " + o.fixtures + " " + o.output, "ROADMAP.md fx out.md", "files");
+    expectEq(ok(["--record=rec"]).record, "rec", "record");
+    expect(ok(["-h"]).help and ok(["--version"]).version, "help and version");
+}
+
+func test_usage_errors(): void {
+    expectEq(err(["--bogus"]), "unrecognized option '--bogus'", "long");
+    expectEq(err(["-x"]), "invalid option -- 'x'", "short");
+    expectEq(err(["-hV"]), "invalid option -- 'V'", "no clusters");
+    expectEq(err(["-o"]), "option requires an argument -- 'o'", "short value");
+    expectEq(err(["--roadmap"]), "option '--roadmap' requires an argument", "long value");
+    expectEq(err(["--help=yes"]), "option '--help' doesn't allow an argument", "flag value");
+    expectEq(err(["--owner="]), "option '--owner' needs a non-empty value", "empty");
+    expectEq(err(["report.md"]), "extra operand 'report.md'", "operand");
+    expectEq(err(["-f", "a", "--record", "b"]), "--fixtures and --record cannot be used together", "both");
+}

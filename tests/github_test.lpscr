@@ -1,0 +1,49 @@
+@mode(host.scripted)
+
+from debug.assert import (expect, expectEq);
+from ..lib.github import (parse_repo_page, wanted, repo_info, parse_latest_run);
+
+let RUNS: string = "tests/fixtures/fleet/runs/";
+
+func test_repo_page(): void {
+    let items = parse_repo_page(readText("tests/fixtures/fleet/repos.json")).unwrap();
+    expectEq(items.len(), 15, "every object");
+    var names: list[string] = [];
+    for (item in items) {
+        if (wanted(item, "loup-cmd-")) {
+            names.push(repo_info(item).name);
+        }
+    }
+    expectEq(names.len(), 12, "archived, template and other names skipped");
+    expect(!names.contains("loup-cmd-old") and !names.contains("loup-cmd-template-demo"), "skipped");
+}
+
+func test_repo_info(): void {
+    let items = parse_repo_page("[{\"name\": \"loup-cmd-x\", \"description\": null, \"default_branch\": \"trunk\", \"html_url\": \"https://github.com/o/loup-cmd-x\", \"topics\": [\"loup\", \"loup-example\"]}]").unwrap();
+    let info = repo_info(items[0]);
+    expectEq(info.name, "loup-cmd-x", "name");
+    expectEq(info.description, "", "null description");
+    expectEq(info.default_branch, "trunk", "branch");
+    expectEq(info.topics.join(","), "loup,loup-example", "topics");
+    expectEq(repo_info(parse_repo_page("[{\"name\": \"y\"}]").unwrap()[0]).default_branch, "main", "default branch");
+}
+
+func test_repo_page_errors(): void {
+    expectEq(parse_repo_page("{\"message\": \"API rate limit exceeded for 192.0.2.1.\"}").unwrap_err(), "API rate limit exceeded for 192.0.2.1.", "API error");
+    expect(parse_repo_page("not json").unwrap_err().startsWith("bad JSON from the API"), "bad JSON");
+    expectEq(parse_repo_page("{\"x\": 1}").unwrap_err(), "unexpected response (expected a list of repositories)", "wrong shape");
+}
+
+func test_latest_run(): void {
+    let found = parse_latest_run(readText(RUNS + "loup-cmd-echo.json"));
+    expectEq(found.state, "found", "state");
+    expectEq(found.run.id, 39382714714, "id");
+    expectEq(found.run.status, "completed", "status");
+    expectEq(found.run.conclusion, "success", "conclusion");
+    expect(found.run.url.endsWith("/actions/runs/39382714714"), "url");
+    let running = parse_latest_run(readText(RUNS + "loup-cmd-kvstore.json"));
+    expectEq(running.run.status + "/" + running.run.conclusion, "in_progress/", "null conclusion");
+    expectEq(parse_latest_run(readText(RUNS + "loup-cmd-xxd.json")).state, "none", "no runs");
+    let limited = parse_latest_run("{\"message\": \"API rate limit exceeded for 192.0.2.1.\"}");
+    expectEq(limited.state + ": " + limited.error, "unknown: API rate limit exceeded for 192.0.2.1.", "error");
+}

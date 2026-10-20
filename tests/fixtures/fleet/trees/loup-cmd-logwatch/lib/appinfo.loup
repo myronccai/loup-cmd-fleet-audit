@@ -1,0 +1,13 @@
+@mode(host.dual)
+
+# Application identity. Keep APP_NAME and APP_VERSION in step with `name`
+# and `version` in package.lppkg.
+
+pub const APP_NAME: string = "logwatch";
+pub const APP_VERSION: string = "0.1.0";
+pub const APP_SUMMARY: string = "Analyse web server access logs in Common or Combined Log Format.";
+
+# Exit statuses.
+pub const EXIT_OK: int = 0;
+pub const EXIT_FAILURE: int = 1;
+pub const EXIT_USAGE: int = 2;

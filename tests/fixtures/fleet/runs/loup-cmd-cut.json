@@ -1,0 +1,16 @@
+{
+  "total_count": 2,
+  "workflow_runs": [
+    {
+      "id": 39384569579,
+      "name": "CI",
+      "head_branch": "main",
+      "head_sha": "77a14ed5bed6d7838d7d7e4358b0622f8d0749e7",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-20T07:08:12Z",
+      "html_url": "https://github.com/myronccai/loup-cmd-cut/actions/runs/39384569579"
+    }
+  ]
+}

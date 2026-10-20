@@ -1,0 +1,16 @@
+{
+  "total_count": 2,
+  "workflow_runs": [
+    {
+      "id": 39388131214,
+      "name": "CI",
+      "head_branch": "main",
+      "head_sha": "2f96d23588fd0d32e1f76fd52452d3d8ffa523da",
+      "event": "push",
+      "status": "in_progress",
+      "conclusion": null,
+      "created_at": "2026-10-20T07:41:03Z",
+      "html_url": "https://github.com/myronccai/loup-cmd-kvstore/actions/runs/39388131214"
+    }
+  ]
+}

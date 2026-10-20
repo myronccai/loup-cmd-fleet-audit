@@ -1,0 +1,147 @@
+@mode(host.dual)
+
+# What the audit knows about one repository, and the functions that read
+# those facts out of file texts. Everything here is pure: the collector
+# (collect.lpscr) does the fetching.
+
+from system.regex import (Regex);
+
+# From the GitHub API's repository list.
+pub struct RepoInfo {
+    pub name: string;
+    pub description: string;
+    pub default_branch: string;
+    pub url: string;
+    pub topics: list[string];
+}
+
+# The latest GitHub Actions run on the default branch.
+pub struct RunInfo {
+    pub id: int;
+    pub status: string;
+    pub conclusion: string;
+    pub url: string;
+    pub created_at: string;
+}
+
+# What the repository's files say. `files` lists the paths that were read
+# (the evidence a recording keeps).
+pub struct TreeFacts {
+    pub manifest_found: bool;
+    pub manifest_loup: string;
+    pub manifest_version: string;
+    pub ci_found: bool;
+    pub ci_loup: string;
+    pub app_version: string;
+    pub app_version_file: string;
+    pub has_todos: bool;
+    pub has_license: bool;
+    pub specs: list[string];
+    pub readme_found: bool;
+    pub readme_section: string;
+    pub files: list[string];
+}
+
+# Everything about one repository. A `*_state` is "found", "none" (the run
+# lookup worked but there are no runs) or "unknown" (with `*_error`).
+pub struct RepoFacts {
+    pub info: RepoInfo;
+    pub run_state: string;
+    pub run: RunInfo;
+    pub run_error: string;
+    pub tree_state: string;
+    pub tree: TreeFacts;
+    pub tree_error: string;
+}
+
+pub func no_run(): RunInfo {
+    return RunInfo(id = 0, status = "", conclusion = "", url = "", created_at = "");
+}
+
+pub func empty_tree(): TreeFacts {
+    return TreeFacts(
+        manifest_found = false,
+        manifest_loup = "",
+        manifest_version = "",
+        ci_found = false,
+        ci_loup = "",
+        app_version = "",
+        app_version_file = "",
+        has_todos = false,
+        has_license = false,
+        specs = [],
+        readme_found = false,
+        readme_section = "",
+        files = [],
+    );
+}
+
+let TOML_PAIR: Regex = Regex("^(?P<key>[A-Za-z0-9_-]+)\\s*=\\s*\"(?P<value>[^\"]*)\"\\s*(#.*)?$");
+let LOUP_VERSION_RE: Regex = Regex("LOUP_VERSION:\\s*[\"']?(?P<value>[0-9][0-9A-Za-z.+-]*)");
+let APP_VERSION_RE: Regex = Regex("APP_VERSION\\s*(?::\\s*string\\s*)?=\\s*\"(?P<value>[^\"]*)\"");
+
+# The string value of a top-level `key = "value"` in a TOML manifest (before
+# the first table), or "".
+pub func toml_value(text: string, key: string): string {
+    for (raw in text.split("\n")) {
+        let line = raw.trim();
+        if (line.startsWith("[")) {
+            return "";
+        }
+        if (!line.startsWith(key)) {
+            continue;
+        }
+        match TOML_PAIR.findFirst(line) {
+            Some(m) => {
+                if ((m.groupByName("key") ?? "") == key) {
+                    return m.groupByName("value") ?? "";
+                }
+            },
+            None => {},
+        }
+    }
+    return "";
+}
+
+# The LOUP_VERSION a CI workflow installs, or "".
+pub func ci_loup_version(text: string): string {
+    for (line in text.split("\n")) {
+        if (line.contains("LOUP_VERSION:")) {
+            match LOUP_VERSION_RE.findFirst(line) {
+                Some(m) => { return m.groupByName("value") ?? ""; },
+                None => {},
+            }
+        }
+    }
+    return "";
+}
+
+# The value of an `APP_VERSION` constant in a source text, or "".
+pub func app_version(text: string): string {
+    if (!text.contains("APP_VERSION")) {
+        return "";
+    }
+    for (line in text.split("\n")) {
+        if (line.contains("APP_VERSION") and line.contains("=")) {
+            match APP_VERSION_RE.findFirst(line) {
+                Some(m) => { return m.groupByName("value") ?? ""; },
+                None => {},
+            }
+        }
+    }
+    return "";
+}
+
+# The README section that explains the example: "Differences from ..." for
+# a recreated command, "What this example shows" for a project; or "".
+pub func readme_section(text: string): string {
+    for (line in text.split("\n")) {
+        if (line.startsWith("## Differences from")) {
+            return line.slice(3).trim();
+        }
+        if (line.startsWith("## What this example shows")) {
+            return "What this example shows";
+        }
+    }
+    return "";
+}

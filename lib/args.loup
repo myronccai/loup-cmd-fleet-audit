@@ -1,0 +1,119 @@
+@mode(host.dual)
+
+# Command-line parsing for fleet-audit, by hand (Loup 1.26 has no CLI
+# library).
+#
+# Grammar: fleet-audit [OPTION]...
+#   Value options take `-o NAME`, `-oNAME`, `--owner NAME` or `--owner=NAME`.
+
+pub const DEFAULT_OWNER: string = "myronccai";
+pub const DEFAULT_PREFIX: string = "loup-cmd-";
+
+pub struct Options {
+    pub help: bool;
+    pub version: bool;
+    pub owner: string;
+    pub prefix: string;
+    pub roadmap: string;
+    pub fixtures: string;
+    pub record: string;
+    pub output: string;
+}
+
+# The long name of a short option letter, or "".
+func long_name(letter: string): string {
+    return match letter {
+        "o" => "--owner",
+        "p" => "--prefix",
+        "r" => "--roadmap",
+        "f" => "--fixtures",
+        "h" => "--help",
+        "V" => "--version",
+        _ => "",
+    };
+}
+
+func takes_value(name: string): bool {
+    return name != "--help" and name != "--version";
+}
+
+pub func parse_args(argv: list[string]): Result[Options, string] {
+    var values: dict[string, string] = {};
+    var help = false;
+    var version = false;
+
+    var i = 0;
+    while (i < argv.len()) {
+        let arg = argv[i];
+        i += 1;
+        if (arg == "--" or !arg.startsWith("-") or arg == "-") {
+            return Err(i"extra operand '{$ arg $}'");
+        }
+
+        var name = arg;
+        var value: Option[string] = None;
+        if (arg.startsWith("--")) {
+            let eq = arg.index_of("=");
+            if (eq >= 0) {
+                name = arg.slice(0, eq);
+                value = Some(arg.slice(eq + 1));
+            }
+            let known = ["--owner", "--prefix", "--roadmap", "--fixtures", "--record", "--output", "--help", "--version"];
+            if (!known.contains(name)) {
+                return Err(i"unrecognized option '{$ arg $}'");
+            }
+        } else {
+            let letter = arg.slice(1, 2);
+            name = long_name(letter);
+            if (name == "") {
+                return Err(i"invalid option -- '{$ letter $}'");
+            }
+            if (arg.len() > 2) {
+                if (!takes_value(name)) {
+                    return Err(i"invalid option -- '{$ arg.slice(2, 3) $}'");
+                }
+                value = Some(arg.slice(2));
+            }
+        }
+
+        if (!takes_value(name)) {
+            if (value.is_some()) {
+                return Err(i"option '{$ name $}' doesn't allow an argument");
+            }
+            if (name == "--help") {
+                help = true;
+            } else {
+                version = true;
+            }
+            continue;
+        }
+        if (value.is_none()) {
+            if (i >= argv.len()) {
+                return Err(if (arg.startsWith("--")) { i"option '{$ name $}' requires an argument" } else { i"option requires an argument -- '{$ arg.slice(1, 2) $}'" });
+            }
+            value = Some(argv[i]);
+            i += 1;
+        }
+        let text = value.unwrap_or("");
+        if (text.len() == 0) {
+            return Err(i"option '{$ name $}' needs a non-empty value");
+        }
+        values[name] = text;
+    }
+
+    let fixtures = values.get("--fixtures") ?? "";
+    let record = values.get("--record") ?? "";
+    if (fixtures.len() > 0 and record.len() > 0) {
+        return Err("--fixtures and --record cannot be used together");
+    }
+    return Ok(Options(
+        help = help,
+        version = version,
+        owner = values.get("--owner") ?? DEFAULT_OWNER,
+        prefix = values.get("--prefix") ?? DEFAULT_PREFIX,
+        roadmap = values.get("--roadmap") ?? "",
+        fixtures = fixtures,
+        record = record,
+        output = values.get("--output") ?? "",
+    ));
+}

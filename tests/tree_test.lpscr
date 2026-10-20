@@ -1,0 +1,39 @@
+@mode(host.scripted)
+
+from debug.assert import (expect, expectEq);
+from ..lib.tree import (read_tree);
+
+let TREES: string = "tests/fixtures/fleet/trees/";
+
+func test_complete_command_repository(): void {
+    let t = read_tree(TREES + "loup-cmd-echo");
+    expect(t.manifest_found and t.ci_found, "manifest and workflow");
+    expectEq(t.manifest_loup, "1.26.0", "pin");
+    expectEq(t.ci_loup, "1.26.0", "LOUP_VERSION");
+    expectEq(t.manifest_version, "0.1.0", "version");
+    expectEq(t.app_version, "0.1.0", "APP_VERSION");
+    expectEq(t.app_version_file, "source/appinfo.loup", "where");
+    expect(!t.has_todos and !t.has_license, "no todos, no license");
+    expectEq(t.specs.join(","), "echo", "spec");
+    expectEq(t.readme_section, "Differences from GNU echo", "readme");
+    expect(t.files.contains(".github/workflows/ci.yml"), "evidence");
+}
+
+func test_scripted_project(): void {
+    let t = read_tree(TREES + "loup-cmd-logwatch");
+    expectEq(t.app_version_file, "lib/appinfo.loup", "lib/");
+    expect(t.has_license, "license");
+    expectEq(t.readme_section, "What this example shows", "readme");
+}
+
+func test_fresh_template_repository(): void {
+    let t = read_tree(TREES + "loup-cmd-md");
+    expect(t.has_todos, "todos");
+    expectEq(t.specs.len(), 0, "the template's spec does not count");
+    expectEq(t.readme_section, "", "no section");
+}
+
+func test_mismatches_are_read_as_they_are(): void {
+    expectEq(read_tree(TREES + "loup-cmd-cut").ci_loup, "1.25.1", "pin");
+    expectEq(read_tree(TREES + "loup-cmd-grep").app_version, "0.2.0", "version");
+}

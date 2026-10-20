@@ -1,0 +1,168 @@
+@mode(host.dual)
+
+# The definition of done, as checks over a repository's facts.
+
+from .facts import (RepoFacts, RunInfo, TreeFacts);
+
+pub const PASS: string = "pass";
+pub const FAIL: string = "fail";
+pub const UNKNOWN: string = "unknown";
+
+# In report order. `license` is a warning, not part of done.
+pub let CHECK_NAMES: list[string] = ["description", "topics", "todos", "pin", "version", "spec", "readme", "ci", "license"];
+pub let WARNING_CHECKS: list[string] = ["license"];
+pub let REQUIRED_TOPICS: list[string] = ["loup", "loup-example"];
+pub let GROUP_TOPICS: list[string] = ["loup-linux-command", "loup-windows-command", "loup-host-dual", "loup-host-scripted", "loup-host-native", "loup-freestanding"];
+
+pub struct Check {
+    pub name: string;
+    pub state: string;
+    pub detail: string;
+}
+
+pub struct Audit {
+    pub facts: RepoFacts;
+    # The group topic without its `loup-` prefix, or "".
+    pub group: string;
+    pub checks: list[Check];
+    pub done: bool;
+}
+
+func pass(name: string): Check {
+    return Check(name = name, state = PASS, detail = "");
+}
+
+func fail(name: string, detail: string): Check {
+    return Check(name = name, state = FAIL, detail = detail);
+}
+
+func unknown(name: string, detail: string): Check {
+    return Check(name = name, state = UNKNOWN, detail = detail);
+}
+
+pub func group_topics(topics: list[string]): list[string] {
+    var groups: list[string] = [];
+    for (t in topics) {
+        if (GROUP_TOPICS.contains(t)) {
+            groups.push(t);
+        }
+    }
+    return groups;
+}
+
+pub func check_topics(topics: list[string]): Check {
+    var missing: list[string] = [];
+    for (t in REQUIRED_TOPICS) {
+        if (!topics.contains(t)) {
+            missing.push(t);
+        }
+    }
+    let groups = group_topics(topics);
+    if (missing.len() > 0) {
+        return fail("topics", "missing " + missing.join(", "));
+    }
+    if (groups.len() == 0) {
+        return fail("topics", "no group topic");
+    }
+    if (groups.len() > 1) {
+        return fail("topics", "several group topics: " + groups.join(", "));
+    }
+    return pass("topics");
+}
+
+pub func check_pin(t: TreeFacts): Check {
+    if (!t.manifest_found) {
+        return fail("pin", "no package.lppkg");
+    }
+    if (t.manifest_loup.len() == 0) {
+        return fail("pin", "no loup = \"...\" in package.lppkg");
+    }
+    if (!t.ci_found) {
+        return fail("pin", "no .github/workflows/ci.yml");
+    }
+    if (t.ci_loup.len() == 0) {
+        return fail("pin", "no LOUP_VERSION in .github/workflows/ci.yml");
+    }
+    if (t.manifest_loup != t.ci_loup) {
+        return fail("pin", "package.lppkg loup " + t.manifest_loup + ", ci.yml LOUP_VERSION " + t.ci_loup);
+    }
+    return pass("pin");
+}
+
+pub func check_version(t: TreeFacts): Check {
+    if (t.manifest_version.len() == 0) {
+        return fail("version", "no version in package.lppkg");
+    }
+    if (t.app_version.len() == 0) {
+        return fail("version", "no APP_VERSION constant in the sources");
+    }
+    if (t.manifest_version != t.app_version) {
+        return fail("version", "package.lppkg " + t.manifest_version + ", APP_VERSION " + t.app_version + " (" + t.app_version_file + ")");
+    }
+    return pass("version");
+}
+
+pub func check_ci(state: string, run: RunInfo, error: string): Check {
+    if (state == UNKNOWN) {
+        return unknown("ci", error);
+    }
+    if (state == "none") {
+        return fail("ci", "no workflow runs");
+    }
+    if (run.status != "completed") {
+        # Queued or still running: not green yet, but not failed either.
+        return unknown("ci", "run " + str(run.id) + " is " + run.status);
+    }
+    if (run.conclusion != "success") {
+        return fail("ci", "latest run " + run.conclusion + " (run " + str(run.id) + ")");
+    }
+    return pass("ci");
+}
+
+# Runs every check over `f`.
+pub func audit(f: RepoFacts): Audit {
+    var checks: list[Check] = [];
+    checks.push(if (f.info.description.trim().len() > 0) { pass("description") } else { fail("description", "no description") });
+    checks.push(check_topics(f.info.topics));
+
+    let t = f.tree;
+    if (f.tree_state == UNKNOWN) {
+        for (name in ["todos", "pin", "version", "spec", "readme"]) {
+            checks.push(unknown(name, f.tree_error));
+        }
+    } else {
+        checks.push(if (t.has_todos) { fail("todos", "REPOSITORY_TODOS.md is still there") } else { pass("todos") });
+        checks.push(check_pin(t));
+        checks.push(check_version(t));
+        checks.push(if (t.specs.len() > 0) { pass("spec") } else { fail("spec", "no complete spec under specs/") });
+        checks.push(if (t.readme_section.len() > 0) { pass("readme") } else { fail("readme", if (t.readme_found) { "no 'Differences from' or 'What this example shows' section" } else { "no README.md" }) });
+    }
+
+    checks.push(check_ci(f.run_state, f.run, f.run_error));
+
+    if (f.tree_state == UNKNOWN) {
+        checks.push(unknown("license", f.tree_error));
+    } else {
+        checks.push(if (t.has_license) { pass("license") } else { fail("license", "no LICENSE file") });
+    }
+
+    var done = true;
+    for (c in checks) {
+        if (c.state != PASS and !WARNING_CHECKS.contains(c.name)) {
+            done = false;
+        }
+    }
+    let groups = group_topics(f.info.topics);
+    let group = if (groups.len() == 1) { groups[0].slice(5) } else { "" };
+    return Audit(facts = f, group = group, checks = checks, done = done);
+}
+
+# The check called `name` in an audit.
+pub func check_named(a: Audit, name: string): Check {
+    for (c in a.checks) {
+        if (c.name == name) {
+            return c;
+        }
+    }
+    return unknown(name, "not run");
+}

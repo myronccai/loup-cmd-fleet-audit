@@ -1,0 +1,33 @@
+@mode(host.scripted)
+
+from debug.assert import (expect, expectEq);
+from ..lib.collect import (Collected, collect_fixtures, transport_phrase);
+
+func test_collect_fixtures(): void {
+    let c = collect_fixtures("tests/fixtures/fleet");
+    expect(c.ok, "collected");
+    expectEq(c.owner + " " + c.prefix, "myronccai loup-cmd-", "from meta.json");
+    expectEq(c.when, "2026-10-20 07:41 UTC", "recorded at");
+    expect(c.source.startsWith("a recording in `tests/fixtures/fleet` of the GitHub REST API"), "source");
+    expectEq(c.facts.len(), 12, "repositories");
+    expectEq(c.facts[0].info.name, "loup-cmd-cat", "sorted");
+    var states: list[string] = [];
+    for (f in c.facts) {
+        if (f.info.name == "loup-cmd-ls" or f.info.name == "loup-cmd-which" or f.info.name == "loup-cmd-xxd") {
+            states.push(f.info.name + " " + f.run_state + "/" + f.tree_state);
+        }
+    }
+    expectEq(states.join(", "), "loup-cmd-ls unknown/found, loup-cmd-which found/unknown, loup-cmd-xxd none/found", "states");
+}
+
+func test_collect_errors(): void {
+    let missing = collect_fixtures("tests/fixtures/nope");
+    expect(!missing.ok, "missing");
+    expectEq(missing.error, "tests/fixtures/nope: not a directory", "message");
+    expectEq(collect_fixtures("tests").error, "tests: no repos.json", "no repos.json");
+}
+
+func test_transport_phrase(): void {
+    expectEq(transport_phrase("gh"), "the GitHub REST API through `gh api` (authenticated)", "gh");
+    expectEq(transport_phrase("curl"), "the GitHub REST API through `curl` (unauthenticated)", "curl");
+}

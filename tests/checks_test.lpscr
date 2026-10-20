@@ -1,0 +1,72 @@
+@mode(host.scripted)
+
+from debug.assert import (expect, expectEq);
+from ..lib.facts import (RepoFacts, RepoInfo, RunInfo, TreeFacts, no_run, empty_tree);
+from ..lib.tree import (read_tree);
+from ..lib.checks import (Audit, Check, audit, check_named, check_topics, check_pin, check_version, check_ci);
+
+let GOOD_TOPICS: list[string] = ["loup", "loup-example", "loup-host-scripted"];
+
+func info(description: string, topics: list[string]): RepoInfo {
+    return RepoInfo(name = "loup-cmd-x", description = description, default_branch = "main", url = "https://github.com/myronccai/loup-cmd-x", topics = topics);
+}
+
+func run_of(status: string, conclusion: string): RunInfo {
+    return RunInfo(id = 7, status = status, conclusion = conclusion, url = "u", created_at = "");
+}
+
+func facts(tree_dir: string, run: RunInfo): RepoFacts {
+    return RepoFacts(info = info("an example", GOOD_TOPICS), run_state = "found", run = run, run_error = "", tree_state = "found", tree = read_tree("tests/fixtures/fleet/trees/" + tree_dir), tree_error = "");
+}
+
+func said(c: Check): string {
+    return c.state + (if (c.detail.len() > 0) { ": " + c.detail } else { "" });
+}
+
+func test_topics(): void {
+    expectEq(said(check_topics(GOOD_TOPICS)), "pass", "complete");
+    expectEq(said(check_topics(["loup-example", "loup-host-dual"])), "fail: missing loup", "missing");
+    expectEq(said(check_topics(["loup", "loup-example"])), "fail: no group topic", "no group");
+    expectEq(said(check_topics(["loup", "loup-example", "loup-host-dual", "loup-freestanding"])), "fail: several group topics: loup-host-dual, loup-freestanding", "two groups");
+}
+
+func test_pin_and_version(): void {
+    expectEq(said(check_pin(read_tree("tests/fixtures/fleet/trees/loup-cmd-echo"))), "pass", "pin");
+    expectEq(said(check_pin(read_tree("tests/fixtures/fleet/trees/loup-cmd-cut"))), "fail: package.lppkg loup 1.26.0, ci.yml LOUP_VERSION 1.25.1", "pin mismatch");
+    expectEq(said(check_pin(empty_tree())), "fail: no package.lppkg", "no manifest");
+    expectEq(said(check_version(read_tree("tests/fixtures/fleet/trees/loup-cmd-grep"))), "fail: package.lppkg 0.1.0, APP_VERSION 0.2.0 (source/appinfo.loup)", "version mismatch");
+    expectEq(said(check_version(empty_tree())), "fail: no version in package.lppkg", "no version");
+}
+
+func test_ci(): void {
+    expectEq(said(check_ci("found", run_of("completed", "success"), "")), "pass", "green");
+    expectEq(said(check_ci("found", run_of("completed", "failure"), "")), "fail: latest run failure (run 7)", "red");
+    expectEq(said(check_ci("found", run_of("in_progress", ""), "")), "unknown: run 7 is in_progress", "running");
+    expectEq(said(check_ci("none", no_run(), "")), "fail: no workflow runs", "none");
+    expectEq(said(check_ci("unknown", no_run(), "rate limited")), "unknown: rate limited", "unknown");
+}
+
+func test_done_ignores_the_license(): void {
+    let a = audit(facts("loup-cmd-echo", run_of("completed", "success")));
+    expect(a.done, "done without a LICENSE");
+    expectEq(check_named(a, "license").state, "fail", "license warned");
+    expectEq(a.group, "host-scripted", "group");
+    expectEq(a.checks.len(), 9, "nine checks");
+}
+
+func test_not_done(): void {
+    expect(!audit(facts("loup-cmd-echo", run_of("completed", "failure"))).done, "red CI");
+    expect(!audit(facts("loup-cmd-md", run_of("completed", "success"))).done, "fresh repository");
+    let f = facts("loup-cmd-echo", run_of("completed", "success"));
+    let blank = RepoFacts(info = info(" ", GOOD_TOPICS), run_state = f.run_state, run = f.run, run_error = "", tree_state = f.tree_state, tree = f.tree, tree_error = "");
+    expectEq(said(check_named(audit(blank), "description")), "fail: no description", "blank description");
+}
+
+func test_unknown_tree(): void {
+    let f = RepoFacts(info = info("x", GOOD_TOPICS), run_state = "found", run = run_of("completed", "success"), run_error = "", tree_state = "unknown", tree = empty_tree(), tree_error = "git clone failed");
+    let a = audit(f);
+    expect(!a.done, "not done");
+    expectEq(said(check_named(a, "pin")), "unknown: git clone failed", "pin unknown");
+    expectEq(said(check_named(a, "license")), "unknown: git clone failed", "license unknown");
+    expectEq(said(check_named(a, "ci")), "pass", "ci still known");
+}

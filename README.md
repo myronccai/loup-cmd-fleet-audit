@@ -1,83 +1,189 @@
-# template Loup commandline application
+# loup-cmd-fleet-audit
 
-A GitHub template for a command-line application written in
-[Loup](https://code-craft.ai/references/loup). It includes argument parsing,
-command dispatch, a sample `hello` command, tests, a native build and a CI
-workflow.
+A [Loup](https://code-craft.ai/references/loup) script that audits every
+`loup-cmd-*` repository of [myronccai](https://github.com/myronccai) against
+the series' definition of done, through `gh`, `curl` and `git`, and writes a
+Markdown report, including the status table of the series roadmap.
 
-After creating a repository from this template, work through
-[REPOSITORY_TODOS.md](REPOSITORY_TODOS.md).
+Part of the **loup-cmd** series of example applications: classic Linux and
+Windows commands, and projects for each Loup execution mode, each in its own
+repository under [myronccai](https://github.com/myronccai?tab=repositories&q=loup-cmd).
+This one is a `host.scripted` project: a thin `.lpscr` entry script in `bin/`
+that drives other programs through `io.proc`, over modules in `lib/`.
 
 ## Requirements
 
-- Loup 1.26.0 or later:
+- Loup 1.26.0 or later (`loup` and `loup-bootstrap` on `PATH`):
 
   ```sh
   curl -fsSL https://github.com/code-craft-ai-company/loup-releases/releases/latest/download/loup-install.sh | sh
-  loup --version
   ```
 
-- `make`
-- `clang` 17 or later for native builds. Native builds are supported on Linux
-  x86-64 and arm64, and are a preview on macOS and Windows.
+- `git`, and `gh` or `curl`, for a live audit. `make` and `bash` for the
+  tests, which need no network and no token.
 
 ## Usage
 
 ```sh
-make run ARGS="--help"            # run from source
-make run ARGS="hello Ann --shout"
-make check                        # type-check the program
-make test                         # run the tests in tests/
-make build                        # native binary: build/myapp
-make ci                           # check, test, build and smoke-test the binary
-make clean
+./bin/fleet-audit.lpscr > report.md                                 # audit the fleet
+loup run bin/fleet-audit.lpscr -- --roadmap ROADMAP.md --output report.md
+GH_TOKEN=... ./bin/fleet-audit.lpscr                                 # through gh api
+make audit ROADMAP=../ROADMAP.md > report.md
+make ci                                                              # check, unit tests, end-to-end tests
 ```
+
+**Token or not.** With `GH_TOKEN` or `GITHUB_TOKEN` set (or `gh` logged in),
+the REST API is read with `gh api`. Without one it is read anonymously with
+`curl`, because `gh` refuses to run without a token even for public data.
+Anonymous access allows 60 requests an hour: the audit makes one for the
+repository list and one per repository, so a larger fleet can run out; the
+CI checks it could not read show as `?` with the API's message. Files are
+always read from shallow `git clone`s of the public repositories.
+
+What it checks, for each repository:
+
+| Check | Passes when |
+|---|---|
+| `description` | the repository has a description |
+| `topics` | it has `loup`, `loup-example` and exactly one group topic (`loup-linux-command`, ...) |
+| `todos` | `REPOSITORY_TODOS.md` is gone |
+| `pin` | `loup` in `package.lppkg` equals `LOUP_VERSION` in `.github/workflows/ci.yml` |
+| `version` | `version` in `package.lppkg` equals the `APP_VERSION` constant in the sources |
+| `spec` | `specs/<name>/` has `requirements.md`, `design.md` and `tasks.md` |
+| `readme` | `README.md` has a "Differences from ..." or "What this example shows" section |
+| `ci` | the latest GitHub Actions run on the default branch succeeded (a run still going is `?`) |
+| `license` | a `LICENSE` file exists (a warning only: the series has not chosen a license yet) |
+
+A repository is **done** when every check but `license` passes. With
+`--roadmap`, the report ends with section 6 of the roadmap (ID, Repo,
+Created, Spec, CI green, Done) filled in, ready to paste.
+
+An audit of the recorded fleet in [`tests/fixtures/fleet`](tests/fixtures/fleet)
+(real data, edited so that every check has something to find; its
+[README](tests/fixtures/fleet/README.md) lists the edits), shortened:
 
 ```text
-$ build/myapp --help
-usage: myapp [OPTIONS] COMMAND [ARGS...]
+$ loup run bin/fleet-audit.lpscr -- -f tests/fixtures/fleet -r tests/fixtures/fleet/ROADMAP.md > report.md; echo "status $?"
+status 1
+$ cat report.md
+# loup-cmd fleet audit
 
-A command-line application written in Loup.
+Repositories `loup-cmd-*` of [myronccai](https://github.com/myronccai), 2026-10-20 07:41 UTC.
+Data: a recording in `tests/fixtures/fleet` of the GitHub REST API through `gh api` (authenticated) and shallow `git` clones.
 
-Commands:
-  hello [NAME]          Print a greeting (NAME defaults to 'world')
-  help                  Show this help
+**12 repositories: 3 done, 9 with problems.**
 
-Options:
-  -g, --greeting TEXT   Greeting used by 'hello' (default: Hello)
-      --shout           Print the greeting in upper case
-  -v, --verbose         Print diagnostic messages to stderr
-  -h, --help            Show this help and exit
-  -V, --version         Show the version and exit
+| Repository | Group | Version | Loup | description | topics | todos | pin | version | spec | readme | ci | license |
+|---|---|---|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| [loup-cmd-cat](https://github.com/myronccai/loup-cmd-cat) | linux-command | 0.1.0 | 1.26.0 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | [✗](https://github.com/myronccai/loup-cmd-cat/actions/runs/39384150772) | ✗ |
+| [loup-cmd-cut](https://github.com/myronccai/loup-cmd-cut) | linux-command | 0.1.0 | 1.26.0 | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ✓ | [✓](https://github.com/myronccai/loup-cmd-cut/actions/runs/39384569579) | ✗ |
+| [loup-cmd-echo](https://github.com/myronccai/loup-cmd-echo) | linux-command | 0.1.0 | 1.26.0 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | [✓](https://github.com/myronccai/loup-cmd-echo/actions/runs/39382714714) | ✗ |
+...
+
+## Problems
+
+- loup-cmd-cat: ci: latest run failure (run 39384150772)
+- loup-cmd-cut: pin: package.lppkg loup 1.26.0, ci.yml LOUP_VERSION 1.25.1
+- loup-cmd-grep: version: package.lppkg 0.1.0, APP_VERSION 0.2.0 (source/appinfo.loup)
+- loup-cmd-kvstore: ci: unknown: run 39388131214 is in_progress
+...
+- loup-cmd-which: todos, pin, version, spec, readme: unknown: not recorded
+- loup-cmd-xxd: ci: no workflow runs
+
+## Warnings
+
+- license: no LICENSE file in loup-cmd-cat, loup-cmd-cut, ...
+
+## Roadmap §6
+
+| ID | Repo | Created | Spec | CI green | Done |
+|---|---|---|---|---|---|
+| L01 | loup-cmd-echo | ☑ | ☑ | ☑ | ☑ |
+| L02 | loup-cmd-cat | ☑ | ☑ | ☐ | ☐ |
+...
+| S3 | loup-cmd-fleet-audit | ☐ | ☐ | ☐ | ☐ |
+| C2 | loup-cmd-kvstore | ☑ | ☑ | ☐ | ☐ |
+
+Created 11 of 13. Not in the roadmap: loup-cmd-httpd.
 ```
 
-Exit status: `0` success, `1` runtime failure, `2` usage error.
+The complete reports are in [`tests/expected/`](tests/expected/). A live
+audit prints its progress (`fleet-audit: [3/19] loup-cmd-cut`) on standard
+error and takes about a second per repository.
+
+### Options
+
+| Option | Meaning |
+|---|---|
+| `-o`, `--owner OWNER` | GitHub account (default `myronccai`) |
+| `-p`, `--prefix PREFIX` | repository name prefix (default `loup-cmd-`) |
+| `-r`, `--roadmap FILE` | add the roadmap's section 6 table |
+| `-f`, `--fixtures DIR` | audit a recording instead of GitHub (no network) |
+| `--record DIR` | save the data of a live audit to DIR, for `--fixtures` |
+| `--output FILE` | write the report to FILE |
+| `-h`, `--help` / `-V`, `--version` | help text / `fleet-audit (loup-cmd-fleet-audit) 0.1.0` |
+
+Under `loup run`, long options go after `--` (`loup run` takes words that
+start with `--` as its own flags, and the self-hosted driver drops unknown
+ones silently); short options pass through, also in the shebang form.
+
+Exit status: `0` every repository is done, `1` some are not, `2` a usage
+error or nothing could be collected (for example no network for the
+repository list).
+
+## What this example shows
+
+- **A script that drives other programs.** `lib/collect.lpscr` runs `gh
+  api`, `curl`, `git clone`, `mktemp`, `cp` and `rm` with `io.proc.run`,
+  reads their exit codes and output (`ProcResult.stdout.decode()`), and
+  turns every failure into an "unknown" fact instead of stopping.
+- **Choosing a mode per module.** The modules that handle parsed JSON
+  (`Any`) and do the I/O are `host.scripted` (`lib/github.lpscr`,
+  `lib/collect.lpscr`); the facts, checks, roadmap parser and report are
+  pure `host.dual` modules (`lib/*.loup`), imported with relative paths
+  (`from ..lib.checks import (audit);`).
+- **Testing without the network.** `--record` saves exactly what an audit
+  read; `--fixtures` replays it. The unit tests read a recording, and the
+  end-to-end tests also run the live code path with
+  [`tests/fake-github.sh`](tests/fake-github.sh) on `PATH` as `gh`, `curl`
+  and `git`, including the anonymous path and a rate-limited API.
+- **Small parsers instead of libraries.** The manifest's TOML keys, the
+  workflow's `LOUP_VERSION` and the `APP_VERSION` constant are read with
+  `system.regex` line by line, the roadmap's Markdown table with `split`.
+  (`data.toml` is not used: a program that imports it gets the TOML parser
+  when it calls `system.json.parse`.)
+
+## Limitations
+
+- Repositories are listed from the owner's public repositories; private ones
+  need a token with access, and only `gh` sends one.
+- The `ci` check reads the latest run on the default branch, whatever its
+  workflow; a repository with several workflows is judged by the newest run.
+- `version` takes the first `APP_VERSION` constant found in the sources
+  (outside `skills/` and `tests/`).
 
 ## Layout
 
 ```text
-package.lppkg            # Loup manifest
-Makefile                 # run, check, test, build, ci, clean
-source/                  # the application's Loup code
-├── main.loup            # entry point
-├── cli/                 # argument parsing, help text, command dispatch
-└── commands/            # one module per command
-tests/                   # *_test.loup files
-specs/                   # feature specs: requirements, design, tasks
-skills/loup-programmer/  # agent skill for writing Loup
+bin/fleet-audit.lpscr       # the program (host.scripted entry script)
+lib/appinfo.loup            # name, version, exit statuses
+lib/args.loup               # option parsing
+lib/usage.loup              # --help and --version text
+lib/collect.lpscr           # gh/curl/git through io.proc; recordings (host.scripted)
+lib/github.lpscr            # reading the API's JSON (host.scripted: Any)
+lib/facts.loup              # RepoInfo, RunInfo, TreeFacts; reading manifest, workflow, sources
+lib/tree.loup               # the facts of a checked-out repository
+lib/checks.loup             # the definition of done
+lib/roadmap.loup            # the roadmap's status table
+lib/report.loup             # the Markdown report
+lib/clock.loup              # UTC time stamps
+tests/*_test.lpscr          # unit tests (make test)
+tests/e2e.sh                # end-to-end tests with loup run (make e2e)
+tests/fake-github.sh        # gh, curl and git for the end-to-end tests
+tests/fixtures/fleet/       # a recorded, edited fleet
+tests/expected/             # its reports
+specs/fleet-audit/          # requirements, design, tasks
 ```
 
-[AGENTS.md](AGENTS.md) has the full layout, every build and test command, and
-the steps for adding a command.
-
-## Notes on the toolchain
-
-- On Linux x86-64, `loup` is the self-hosted driver and `loup-bootstrap` is
-  Stage0. `check` and `test` use `loup-bootstrap`; on other platforms both
-  names run the same tool. The Makefile handles this.
-- Modules import each other by their path under `source/`
-  (`from cli.args import (Options);`). Tests import them the same way, which
-  is why `make test` puts `source/` on `LOUPPATH`.
-- The Wasm build (`loup-bootstrap build`) is experimental: modules that use
-  `i"..."` interpolation build but trap at run time, so this template builds
-  native binaries.
+[AGENTS.md](AGENTS.md) has every check and test command and the conventions
+for changing the code.

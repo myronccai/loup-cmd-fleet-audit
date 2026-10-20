@@ -1,0 +1,184 @@
+@mode(host.dual)
+
+# The audit as Markdown: a summary, a table of checks, the problems and
+# warnings, and the roadmap's status table.
+
+from .checks import (Audit, Check, CHECK_NAMES, WARNING_CHECKS, PASS, FAIL, UNKNOWN, check_named);
+from .roadmap import (Planned);
+
+pub struct ReportMeta {
+    pub owner: string;
+    pub prefix: string;
+    # Where the data came from, as a phrase: "the GitHub REST API through ...".
+    pub source: string;
+    # When it was collected: "2026-10-20 07:50 UTC".
+    pub when: string;
+}
+
+pub func mark(c: Check): string {
+    return if (c.state == PASS) { "✓" } else if (c.state == FAIL) { "✗" } else { "?" };
+}
+
+func tick(on: bool): string {
+    return if (on) { "☑" } else { "☐" };
+}
+
+func or_dash(text: string): string {
+    return if (text.len() == 0) { "—" } else { text };
+}
+
+func link(text: string, url: string): string {
+    return if (url.len() == 0) { text } else { "[" + text + "](" + url + ")" };
+}
+
+pub func summary_line(audits: list[Audit]): string {
+    var done = 0;
+    for (a in audits) {
+        if (a.done) {
+            done += 1;
+        }
+    }
+    let noun = if (audits.len() == 1) { "repository" } else { "repositories" };
+    return "**" + str(audits.len()) + " " + noun + ": " + str(done) + " done, " + str(audits.len() - done) + " with problems.**";
+}
+
+pub func checks_table(audits: list[Audit]): string {
+    var lines: list[string] = [];
+    lines.push("| Repository | Group | Version | Loup | " + CHECK_NAMES.join(" | ") + " |");
+    var rule = "|---|---|---|---|";
+    for (name in CHECK_NAMES) {
+        rule += ":-:|";
+    }
+    lines.push(rule);
+    for (a in audits) {
+        let f = a.facts;
+        let known = f.tree_state != UNKNOWN;
+        var cells: list[string] = [
+            link(f.info.name, f.info.url),
+            or_dash(a.group),
+            if (known) { or_dash(f.tree.manifest_version) } else { "?" },
+            if (known) { or_dash(f.tree.manifest_loup) } else { "?" },
+        ];
+        for (name in CHECK_NAMES) {
+            let c = check_named(a, name);
+            cells.push(if (name == "ci") { link(mark(c), f.run.url) } else { mark(c) });
+        }
+        lines.push("| " + cells.join(" | ") + " |");
+    }
+    return lines.join("\n");
+}
+
+# `- REPO: check: detail` for every failed or unknown check that is (or,
+# with `warnings` false, is not) a warning. Unknown checks of a repository
+# that share a reason (a clone that failed) make one line:
+# `- REPO: todos, pin: unknown: reason`.
+func problem_lines(audits: list[Audit], warnings: bool): list[string] {
+    var lines: list[string] = [];
+    for (a in audits) {
+        var names: list[string] = [];
+        var details: list[string] = [];
+        for (c in a.checks) {
+            if (c.state == PASS or WARNING_CHECKS.contains(c.name) != warnings) {
+                continue;
+            }
+            let detail = if (c.state == UNKNOWN) { "unknown: " + c.detail } else { c.detail };
+            let last = details.len() - 1;
+            if (c.state == UNKNOWN and last >= 0 and details[last] == detail) {
+                names[last] = names[last] + ", " + c.name;
+            } else {
+                names.push(c.name);
+                details.push(detail);
+            }
+        }
+        for (k in 0..names.len()) {
+            lines.push("- " + a.facts.info.name + ": " + names[k] + ": " + details[k]);
+        }
+    }
+    return lines;
+}
+
+# Warnings grouped by check: one line per check, naming the repositories.
+func warning_lines(audits: list[Audit]): list[string] {
+    var lines: list[string] = [];
+    for (name in WARNING_CHECKS) {
+        var failing: list[string] = [];
+        var detail = "";
+        for (a in audits) {
+            let c = check_named(a, name);
+            if (c.state != PASS) {
+                failing.push(a.facts.info.name);
+                if (c.state == FAIL) {
+                    detail = c.detail;
+                }
+            }
+        }
+        if (failing.len() == 0) {
+            continue;
+        }
+        let which = if (failing.len() == audits.len() and audits.len() > 1) { "any of the " + str(audits.len()) + " repositories" } else { failing.join(", ") };
+        lines.push("- " + name + ": " + or_dash(detail) + " in " + which);
+    }
+    return lines;
+}
+
+pub func roadmap_table(audits: list[Audit], planned: list[Planned]): string {
+    var lines: list[string] = ["| ID | Repo | Created | Spec | CI green | Done |", "|---|---|---|---|---|---|"];
+    var created = 0;
+    for (p in planned) {
+        var found = false;
+        var spec = false;
+        var ci = false;
+        var done = false;
+        for (a in audits) {
+            if (a.facts.info.name == p.repo) {
+                found = true;
+                spec = check_named(a, "spec").state == PASS;
+                ci = check_named(a, "ci").state == PASS;
+                done = a.done;
+            }
+        }
+        if (found) {
+            created += 1;
+        }
+        lines.push("| " + p.id + " | " + p.repo + " | " + tick(found) + " | " + tick(spec) + " | " + tick(ci) + " | " + tick(done) + " |");
+    }
+    var extra: list[string] = [];
+    for (a in audits) {
+        var listed = false;
+        for (p in planned) {
+            if (p.repo == a.facts.info.name) {
+                listed = true;
+            }
+        }
+        if (!listed) {
+            extra.push(a.facts.info.name);
+        }
+    }
+    lines.push("");
+    var tail = "Created " + str(created) + " of " + str(planned.len()) + ".";
+    if (extra.len() > 0) {
+        tail += " Not in the roadmap: " + extra.join(", ") + ".";
+    }
+    lines.push(tail);
+    return lines.join("\n");
+}
+
+pub func render_report(meta: ReportMeta, audits: list[Audit], planned: list[Planned], with_roadmap: bool): string {
+    var parts: list[string] = [];
+    parts.push("# loup-cmd fleet audit");
+    parts.push("Repositories `" + meta.prefix + "*` of [" + meta.owner + "](https://github.com/" + meta.owner + "), " + meta.when + ".\nData: " + meta.source + ".");
+    parts.push(summary_line(audits));
+    if (audits.len() > 0) {
+        parts.push(checks_table(audits) + "\n\n✓ pass, ✗ fail, ? unknown. A repository is done when every check but `license` passes.");
+    }
+
+    let problems = problem_lines(audits, false);
+    parts.push("## Problems\n\n" + (if (problems.len() == 0) { "None." } else { problems.join("\n") }));
+    let warnings = warning_lines(audits);
+    parts.push("## Warnings\n\n" + (if (warnings.len() == 0) { "None." } else { warnings.join("\n") }));
+
+    if (with_roadmap) {
+        parts.push("## Roadmap §6\n\n" + roadmap_table(audits, planned));
+    }
+    return parts.join("\n\n") + "\n";
+}

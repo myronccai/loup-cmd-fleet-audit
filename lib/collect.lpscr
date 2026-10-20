@@ -1,0 +1,270 @@
+@mode(host.scripted)
+
+# Collects the facts the audit checks.
+#
+# Live: the GitHub REST API through `gh api` (or `curl` without a token) for
+# the repository list and each latest Actions run, and a shallow `git clone`
+# of each repository for its files. All of it runs through io.proc, and
+# every failure is kept as an "unknown" fact rather than stopping the run.
+#
+# Offline: the same data read from a recording directory:
+#   meta.json            owner, prefix, recorded_at, source
+#   repos.json           the repository objects (API JSON)
+#   runs/NAME.json       each runs response (API JSON)
+#   trees/NAME/...       the files the audit read from each repository
+#   trees/NAME.unavailable  why a repository could not be cloned
+# `--record DIR` writes that layout during a live run.
+
+from io.proc import (run);
+from io.fs import (isDir, isFile);
+from io.path import (dirname);
+from system.json import (parse, stringifyIndented);
+from system.time import (realtimeNs);
+from .facts import (RepoFacts, RepoInfo, RunInfo, TreeFacts, no_run, empty_tree);
+from .tree import (read_tree);
+from .github import (RunLookup, parse_repo_page, wanted, repo_info, parse_latest_run);
+from .clock import (utc_stamp);
+
+pub struct Collected {
+    pub ok: bool;
+    pub error: string;
+    pub owner: string;
+    pub prefix: string;
+    pub source: string;
+    pub when: string;
+    pub facts: list[RepoFacts];
+}
+
+func failed(message: string): Collected {
+    return Collected(ok = false, error = message, owner = "", prefix = "", source = "", when = "", facts = []);
+}
+
+func first_line(text: string): string {
+    let lines = text.trim().split("\n");
+    return if (lines.len() > 0) { lines[0].trim() } else { "" };
+}
+
+func has_program(name: string): bool {
+    return run(["sh", "-c", "command -v " + name]).exit_code == 0;
+}
+
+# "gh" when a token is set or gh is logged in; else "curl" (anonymous, 60
+# requests an hour); "" when neither program is installed. (gh refuses to
+# run at all without a token, even for public data.)
+pub func choose_transport(): string {
+    let token = (env("GH_TOKEN") ?? "") + (env("GITHUB_TOKEN") ?? "");
+    if (has_program("gh") and (token.len() > 0 or run(["gh", "auth", "status"]).exit_code == 0)) {
+        return "gh";
+    }
+    if (has_program("curl")) {
+        return "curl";
+    }
+    return "";
+}
+
+pub func transport_phrase(transport: string): string {
+    return if (transport == "gh") { "the GitHub REST API through `gh api` (authenticated)" } else { "the GitHub REST API through `curl` (unauthenticated)" };
+}
+
+# GET an API path. Error responses are JSON too, so any output is returned
+# for the parsers to judge; no output at all is an error.
+func api_get(transport: string, path: string): Result[string, string] {
+    let argv = if (transport == "gh") {
+        ["gh", "api", "-H", "Accept: application/vnd.github+json", path]
+    } else {
+        ["curl", "-sS", "-H", "Accept: application/vnd.github+json", "https://api.github.com/" + path]
+    };
+    let r = run(argv);
+    let out = r.stdout.decode();
+    if (out.trim().len() > 0) {
+        return Ok(out);
+    }
+    let reason = first_line(r.stderr.decode());
+    return Err(if (reason.len() > 0) { reason } else { argv[0] + " exited with status " + str(r.exit_code) });
+}
+
+func compare_text(a: string, b: string): int {
+    return if (a < b) { -1 } else if (a > b) { 1 } else { 0 };
+}
+
+# The wanted repository objects, sorted by name.
+func select_repos(items: list[Any], prefix: string): list[Any] {
+    var by_name: dict[string, Any] = {};
+    var names: list[string] = [];
+    for (item in items) {
+        if (wanted(item, prefix)) {
+            let name = repo_info(item).name;
+            by_name[name] = item;
+            names.push(name);
+        }
+    }
+    names.sort(func(a: string, b: string): int { return compare_text(a, b); });
+    var out: list[Any] = [];
+    for (name in names) {
+        out.push(by_name[name]);
+    }
+    return out;
+}
+
+func facts_of(info: RepoInfo, lookup: RunLookup, tree_state: string, tree: TreeFacts, tree_error: string): RepoFacts {
+    return RepoFacts(
+        info = info,
+        run_state = lookup.state,
+        run = lookup.run,
+        run_error = lookup.error,
+        tree_state = tree_state,
+        tree = tree,
+        tree_error = tree_error,
+    );
+}
+
+func write_file(path: string, text: string): void {
+    run(["mkdir", "-p", dirname(path)]);
+    writeText(path, text);
+}
+
+func copy_file(src: string, dst: string): void {
+    run(["mkdir", "-p", dirname(dst)]);
+    run(["cp", src, dst]);
+}
+
+# Audits live data. With `record` set, also writes it there as a recording.
+pub func collect_live(owner: string, prefix: string, record: string): Collected {
+    let transport = choose_transport();
+    if (transport == "") {
+        return failed("neither gh nor curl is installed");
+    }
+    if (!has_program("git")) {
+        return failed("git is not installed");
+    }
+    let when = utc_stamp(realtimeNs() / 1000000000);
+
+    var items: list[Any] = [];
+    var page = 1;
+    while (true) {
+        let text = match api_get(transport, "users/" + owner + "/repos?per_page=100&page=" + str(page)) {
+            Ok(t) => t,
+            Err(msg) => { return failed("cannot list the repositories of " + owner + ": " + msg); },
+        };
+        let got = match parse_repo_page(text) {
+            Ok(list) => list,
+            Err(msg) => { return failed("cannot list the repositories of " + owner + ": " + msg); },
+        };
+        for (item in got) {
+            items.push(item);
+        }
+        if (got.len() < 100) {
+            break;
+        }
+        page += 1;
+    }
+    let repos = select_repos(items, prefix);
+
+    let work = run(["mktemp", "-d"]).stdout.decode().trim();
+    if (work.len() == 0 or !isDir(work)) {
+        return failed("cannot create a temporary directory");
+    }
+    if (record.len() > 0) {
+        var meta: dict[string, Any] = {"owner": owner, "prefix": prefix, "recorded_at": when, "source": transport_phrase(transport) + " and shallow `git` clones"};
+        write_file(record + "/meta.json", stringifyIndented(meta, 2) + "\n");
+        write_file(record + "/repos.json", stringifyIndented(repos, 2) + "\n");
+    }
+
+    var facts: list[RepoFacts] = [];
+    var count = 0;
+    for (repo in repos) {
+        let info = repo_info(repo);
+        count += 1;
+        printErr("fleet-audit: [" + str(count) + "/" + str(repos.len()) + "] " + info.name);
+
+        let runs_path = "repos/" + owner + "/" + info.name + "/actions/runs?branch=" + info.default_branch + "&per_page=1";
+        let lookup = match api_get(transport, runs_path) {
+            Ok(text) => {
+                if (record.len() > 0) {
+                    write_file(record + "/runs/" + info.name + ".json", text);
+                }
+                parse_latest_run(text)
+            },
+            Err(msg) => RunLookup(state = "unknown", run = no_run(), error = msg),
+        };
+
+        let dest = work + "/" + info.name;
+        let clone = run(["env", "GIT_TERMINAL_PROMPT=0", "git", "-c", "credential.helper=", "clone", "--quiet", "--depth", "1", "--branch", info.default_branch, "https://github.com/" + owner + "/" + info.name + ".git", dest]);
+        if (clone.exit_code == 0 and isDir(dest)) {
+            let tree = read_tree(dest);
+            if (record.len() > 0) {
+                for (rel in tree.files) {
+                    copy_file(dest + "/" + rel, record + "/trees/" + info.name + "/" + rel);
+                }
+            }
+            facts.push(facts_of(info, lookup, "found", tree, ""));
+        } else {
+            let reason = first_line(clone.stderr.decode());
+            let error = "git clone failed: " + (if (reason.len() > 0) { reason } else { "status " + str(clone.exit_code) });
+            if (record.len() > 0) {
+                write_file(record + "/trees/" + info.name + ".unavailable", error + "\n");
+            }
+            facts.push(facts_of(info, lookup, "unknown", empty_tree(), error));
+        }
+        run(["rm", "-rf", dest]);
+    }
+    run(["rm", "-rf", work]);
+
+    return Collected(ok = true, error = "", owner = owner, prefix = prefix, source = transport_phrase(transport) + " and shallow `git` clones", when = when, facts = facts);
+}
+
+func meta_text(meta: dict[string, Any], key: string, fallback: string): string {
+    match meta.get(key) {
+        Some(v) => {
+            return if (v is string) { v as string } else { fallback };
+        },
+        None => {
+            return fallback;
+        },
+    }
+}
+
+# Audits a recording made with --record (no network).
+pub func collect_fixtures(dir: string): Collected {
+    if (!isDir(dir)) {
+        return failed(dir + ": not a directory");
+    }
+    if (!isFile(dir + "/repos.json")) {
+        return failed(dir + ": no repos.json");
+    }
+    var meta: dict[string, Any] = {};
+    if (isFile(dir + "/meta.json")) {
+        match parse(readText(dir + "/meta.json")) {
+            Ok(doc) => {
+                if (doc is dict[string, Any]) {
+                    meta = doc as dict[string, Any];
+                }
+            },
+            Err(msg) => { return failed(dir + "/meta.json: " + msg); },
+        }
+    }
+    let owner = meta_text(meta, "owner", "myronccai");
+    let prefix = meta_text(meta, "prefix", "loup-cmd-");
+    let items = match parse_repo_page(readText(dir + "/repos.json")) {
+        Ok(list) => list,
+        Err(msg) => { return failed(dir + "/repos.json: " + msg); },
+    };
+
+    var facts: list[RepoFacts] = [];
+    for (repo in select_repos(items, prefix)) {
+        let info = repo_info(repo);
+        let runs_file = dir + "/runs/" + info.name + ".json";
+        let lookup = if (isFile(runs_file)) { parse_latest_run(readText(runs_file)) } else { RunLookup(state = "unknown", run = no_run(), error = "not recorded") };
+        let tree_dir = dir + "/trees/" + info.name;
+        if (isDir(tree_dir)) {
+            facts.push(facts_of(info, lookup, "found", read_tree(tree_dir), ""));
+        } else {
+            # A clone that failed while recording left its reason here.
+            let reason_file = tree_dir + ".unavailable";
+            let reason = if (isFile(reason_file)) { readText(reason_file).trim() } else { "not recorded" };
+            facts.push(facts_of(info, lookup, "unknown", empty_tree(), reason));
+        }
+    }
+    let source = "a recording in `" + dir + "` of " + meta_text(meta, "source", "the GitHub REST API");
+    return Collected(ok = true, error = "", owner = owner, prefix = prefix, source = source, when = meta_text(meta, "recorded_at", "unknown time"), facts = facts);
+}

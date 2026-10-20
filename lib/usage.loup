@@ -1,0 +1,34 @@
+@mode(host.dual)
+
+from .appinfo import (APP_NAME, APP_VERSION);
+
+pub func usage(): string {
+    let lines = [
+        i"usage: {$ APP_NAME $} [OPTION]...",
+        "",
+        "Audit the owner's loup-cmd-* repositories against the series' definition",
+        "of done and write a Markdown report. Uses `gh api` when GH_TOKEN or",
+        "GITHUB_TOKEN is set (or gh is logged in), else anonymous `curl`, and",
+        "shallow `git` clones.",
+        "",
+        "  -o, --owner OWNER      GitHub account (default myronccai)",
+        "  -p, --prefix PREFIX    repository name prefix (default loup-cmd-)",
+        "  -r, --roadmap FILE     add the roadmap's section 6 status table",
+        "  -f, --fixtures DIR     audit a recording instead of GitHub (no network)",
+        "      --record DIR       save the data used to DIR, for --fixtures",
+        "      --output FILE      write the report to FILE instead of standard output",
+        "  -h, --help             display this help and exit",
+        "  -V, --version          output version information and exit",
+        "",
+        "Under `loup run`, long options go after `--`:",
+        i"  loup run bin/{$ APP_NAME $}.lpscr -- --roadmap ROADMAP.md --output report.md",
+        "",
+        "Exit status: 0 every repository is done, 1 some are not, 2 usage error",
+        "or nothing could be collected.",
+    ];
+    return lines.join("\n");
+}
+
+pub func version_line(): string {
+    return i"{$ APP_NAME $} (loup-cmd-{$ APP_NAME $}) {$ APP_VERSION $}";
+}

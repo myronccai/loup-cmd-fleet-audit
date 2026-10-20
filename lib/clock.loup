@@ -1,0 +1,24 @@
+@mode(host.dual)
+
+# UTC time stamps from seconds since 1970, with integer date arithmetic.
+
+from system.text import (padStart);
+
+func pad2(n: int): string {
+    return padStart(str(n), 2, "0");
+}
+
+# `2026-10-20 07:50 UTC`.
+pub func utc_stamp(epoch_seconds: int): string {
+    let z = epoch_seconds / 86400 + 719468;
+    let era = (if (z >= 0) { z } else { z - 146096 }) / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if (mp < 10) { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + (if (month <= 2) { 1 } else { 0 });
+    let rest = epoch_seconds % 86400;
+    return str(year) + "-" + pad2(month) + "-" + pad2(day) + " " + pad2(rest / 3600) + ":" + pad2((rest / 60) % 60) + " UTC";
+}

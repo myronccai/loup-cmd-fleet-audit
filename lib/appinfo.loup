@@ -1,0 +1,14 @@
+@mode(host.dual)
+
+# Application identity. Keep APP_NAME and APP_VERSION in step with `name`
+# and `version` in package.lppkg.
+
+pub const APP_NAME: string = "fleet-audit";
+pub const APP_VERSION: string = "0.1.0";
+pub const APP_SUMMARY: string = "Audit the loup-cmd repositories against the series' definition of done.";
+
+# Exit statuses: 0 every repository is done, 1 some are not, 2 usage error
+# or nothing could be collected.
+pub const EXIT_OK: int = 0;
+pub const EXIT_PROBLEMS: int = 1;
+pub const EXIT_USAGE: int = 2;

@@ -1,0 +1,243 @@
+[
+  {
+    "name": "loup-cmd-cat",
+    "full_name": "myronccai/loup-cmd-cat",
+    "html_url": "https://github.com/myronccai/loup-cmd-cat",
+    "description": "GNU cat recreated in Loup: concatenate files with line numbers and visible control characters",
+    "default_branch": "main",
+    "topics": [
+      "loup",
+      "loup-example",
+      "loup-linux-command"
+    ],
+    "archived": false,
+    "is_template": false,
+    "license": null,
+    "visibility": "public",
+    "pushed_at": "2026-10-20T07:04:12Z"
+  },
+  {
+    "name": "loup-cmd-cut",
+    "full_name": "myronccai/loup-cmd-cut",
+    "html_url": "https://github.com/myronccai/loup-cmd-cut",
+    "description": "GNU cut recreated in Loup: extract fields, characters or bytes from each line",
+    "default_branch": "main",
+    "topics": [
+      "loup",
+      "loup-example",
+      "loup-linux-command"
+    ],
+    "archived": false,
+    "is_template": false,
+    "license": null,
+    "visibility": "public",
+    "pushed_at": "2026-10-20T07:08:10Z"
+  },
+  {
+    "name": "loup-cmd-echo",
+    "full_name": "myronccai/loup-cmd-echo",
+    "html_url": "https://github.com/myronccai/loup-cmd-echo",
+    "description": "echo recreated in Loup: write arguments to standard output",
+    "default_branch": "main",
+    "topics": [
+      "loup",
+      "loup-example",
+      "loup-linux-command"
+    ],
+    "archived": false,
+    "is_template": false,
+    "license": null,
+    "visibility": "public",
+    "pushed_at": "2026-10-20T06:50:10Z"
+  },
+  {
+    "name": "loup-cmd-grep",
+    "full_name": "myronccai/loup-cmd-grep",
+    "html_url": "https://github.com/myronccai/loup-cmd-grep",
+    "description": "GNU grep recreated in Loup: search files for lines matching a pattern, with context, recursion and GNU exit statuses.",
+    "default_branch": "main",
+    "topics": [
+      "loup",
+      "loup-example",
+      "loup-linux-command"
+    ],
+    "archived": false,
+    "is_template": false,
+    "license": null,
+    "visibility": "public",
+    "pushed_at": "2026-10-20T07:27:53Z"
+  },
+  {
+    "name": "loup-cmd-httpd",
+    "full_name": "myronccai/loup-cmd-httpd",
+    "html_url": "https://github.com/myronccai/loup-cmd-httpd",
+    "description": "Host-scripted Loup example: a static file server on net.http",
+    "default_branch": "main",
+    "topics": [
+      "loup",
+      "loup-example",
+      "loup-host-scripted"
+    ],
+    "archived": false,
+    "is_template": false,
+    "license": null,
+    "visibility": "public",
+    "pushed_at": "2026-10-20T07:37:50Z"
+  },
+  {
+    "name": "loup-cmd-kvstore",
+    "full_name": "myronccai/loup-cmd-kvstore",
+    "html_url": "https://github.com/myronccai/loup-cmd-kvstore",
+    "description": "Host-compiled Loup example: an append-only key-value store with unique ownership",
+    "default_branch": "main",
+    "topics": [
+      "loup",
+      "loup-example",
+      "loup-host-native"
+    ],
+    "archived": false,
+    "is_template": false,
+    "license": null,
+    "visibility": "public",
+    "pushed_at": "2026-10-20T07:41:01Z"
+  },
+  {
+    "name": "loup-cmd-logwatch",
+    "full_name": "myronccai/loup-cmd-logwatch",
+    "html_url": "https://github.com/myronccai/loup-cmd-logwatch",
+    "description": "Access-log analyser for Common and Combined Log Format: top paths, status mix, hourly histogram, top clients, error bursts; text, CSV or JSON (Loup host.scripted)",
+    "default_branch": "main",
+    "topics": [
+      "loup",
+      "loup-example",
+      "loup-host-scripted"
+    ],
+    "archived": false,
+    "is_template": false,
+    "license": null,
+    "visibility": "public",
+    "pushed_at": "2026-10-20T07:18:48Z"
+  },
+  {
+    "name": "loup-cmd-ls",
+    "full_name": "myronccai/loup-cmd-ls",
+    "html_url": "https://github.com/myronccai/loup-cmd-ls",
+    "description": "GNU ls recreated in Loup: list directory contents with -a, -A, -1, -R, -F, -r, -C and -d.",
+    "default_branch": "main",
+    "topics": [
+      "loup",
+      "loup-example",
+      "loup-linux-command"
+    ],
+    "archived": false,
+    "is_template": false,
+    "license": null,
+    "visibility": "public",
+    "pushed_at": "2026-10-20T07:09:24Z"
+  },
+  {
+    "name": "loup-cmd-md",
+    "full_name": "myronccai/loup-cmd-md",
+    "html_url": "https://github.com/myronccai/loup-cmd-md",
+    "description": "Windows md recreated in Loup: create directories",
+    "default_branch": "main",
+    "topics": [],
+    "archived": false,
+    "is_template": false,
+    "license": null,
+    "visibility": "public",
+    "pushed_at": "2026-10-20T07:35:09Z"
+  },
+  {
+    "name": "loup-cmd-type",
+    "full_name": "myronccai/loup-cmd-type",
+    "html_url": "https://github.com/myronccai/loup-cmd-type",
+    "description": null,
+    "default_branch": "main",
+    "topics": [
+      "loup",
+      "loup-example",
+      "loup-windows-command"
+    ],
+    "archived": false,
+    "is_template": false,
+    "license": null,
+    "visibility": "public",
+    "pushed_at": "2026-10-20T07:17:24Z"
+  },
+  {
+    "name": "loup-cmd-which",
+    "full_name": "myronccai/loup-cmd-which",
+    "html_url": "https://github.com/myronccai/loup-cmd-which",
+    "description": "which recreated in Loup: locate a command on PATH",
+    "default_branch": "main",
+    "topics": [
+      "loup",
+      "loup-example",
+      "loup-linux-command"
+    ],
+    "archived": false,
+    "is_template": false,
+    "license": null,
+    "visibility": "public",
+    "pushed_at": "2026-10-20T07:34:41Z"
+  },
+  {
+    "name": "loup-cmd-xxd",
+    "full_name": "myronccai/loup-cmd-xxd",
+    "html_url": "https://github.com/myronccai/loup-cmd-xxd",
+    "description": "xxd recreated in Loup: make a hex dump or reverse one",
+    "default_branch": "main",
+    "topics": [
+      "loup",
+      "loup-example",
+      "loup-linux-command"
+    ],
+    "archived": false,
+    "is_template": false,
+    "license": null,
+    "visibility": "public",
+    "pushed_at": "2026-10-20T07:35:47Z"
+  },
+  {
+    "name": "loup-cmd-old",
+    "full_name": "myronccai/loup-cmd-old",
+    "html_url": "https://github.com/myronccai/loup-cmd-old",
+    "description": "An archived experiment",
+    "default_branch": "main",
+    "topics": [
+      "loup"
+    ],
+    "archived": true,
+    "is_template": false,
+    "license": null,
+    "visibility": "public",
+    "pushed_at": "2026-10-01T00:00:00Z"
+  },
+  {
+    "name": "loup-cmd-template-demo",
+    "full_name": "myronccai/loup-cmd-template-demo",
+    "html_url": "https://github.com/myronccai/loup-cmd-template-demo",
+    "description": "A template",
+    "default_branch": "main",
+    "topics": [],
+    "archived": false,
+    "is_template": true,
+    "license": null,
+    "visibility": "public",
+    "pushed_at": "2026-10-01T00:00:00Z"
+  },
+  {
+    "name": "template-loup-cmd-app",
+    "full_name": "myronccai/template-loup-cmd-app",
+    "html_url": "https://github.com/myronccai/template-loup-cmd-app",
+    "description": "The template",
+    "default_branch": "main",
+    "topics": [],
+    "archived": false,
+    "is_template": true,
+    "license": null,
+    "visibility": "public",
+    "pushed_at": "2026-10-01T00:00:00Z"
+  }
+]

@@ -1,0 +1,67 @@
+#!/usr/bin/env -S loup run
+@mode(host.scripted)
+
+# fleet-audit: check every loup-cmd-* repository against the series'
+# definition of done and write a Markdown report.
+#
+# This script is the program's top level: options, collecting (live through
+# gh/curl and git, or from a recording), the checks, and the report. The
+# collecting is lib/collect.lpscr; the checks and the report are pure
+# host.dual modules.
+
+from io.fs import (isFile);
+from ..lib.appinfo import (APP_NAME, EXIT_OK, EXIT_PROBLEMS, EXIT_USAGE);
+from ..lib.args import (Options, parse_args);
+from ..lib.usage import (usage, version_line);
+from ..lib.collect import (Collected, collect_live, collect_fixtures);
+from ..lib.checks import (Audit, audit);
+from ..lib.roadmap import (Planned, planned_repos);
+from ..lib.report import (ReportMeta, render_report);
+
+let parsed = parse_args(args());
+if (parsed.is_err()) {
+    printErr(i"{$ APP_NAME $}: {$ parsed.unwrap_err() $}");
+    printErr(i"Try '{$ APP_NAME $} --help' for more information.");
+    exit(EXIT_USAGE);
+}
+let opts: Options = parsed.unwrap();
+if (opts.help) {
+    println(usage());
+    exit(EXIT_OK);
+}
+if (opts.version) {
+    println(version_line());
+    exit(EXIT_OK);
+}
+
+var planned: list[Planned] = [];
+if (opts.roadmap.len() > 0) {
+    if (!isFile(opts.roadmap)) {
+        printErr(i"{$ APP_NAME $}: {$ opts.roadmap $}: no such file");
+        exit(EXIT_USAGE);
+    }
+    planned = planned_repos(readText(opts.roadmap));
+}
+
+let collected: Collected = if (opts.fixtures.len() > 0) { collect_fixtures(opts.fixtures) } else { collect_live(opts.owner, opts.prefix, opts.record) };
+if (!collected.ok) {
+    printErr(i"{$ APP_NAME $}: {$ collected.error $}");
+    exit(EXIT_USAGE);
+}
+
+var audits: list[Audit] = [];
+var all_done = true;
+for (f in collected.facts) {
+    let a = audit(f);
+    audits.push(a);
+    all_done = all_done and a.done;
+}
+
+let meta = ReportMeta(owner = collected.owner, prefix = collected.prefix, source = collected.source, when = collected.when);
+let report = render_report(meta, audits, planned, opts.roadmap.len() > 0);
+if (opts.output.len() > 0) {
+    writeText(opts.output, report);
+} else {
+    print(report);
+}
+exit(if (all_done) { EXIT_OK } else { EXIT_PROBLEMS });

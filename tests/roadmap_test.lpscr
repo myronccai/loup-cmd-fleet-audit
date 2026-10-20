@@ -1,0 +1,15 @@
+@mode(host.scripted)
+
+from debug.assert import (expectEq);
+from ..lib.roadmap import (planned_repos);
+
+func test_status_section_only(): void {
+    let rows = planned_repos(readText("tests/fixtures/fleet/ROADMAP.md"));
+    expectEq(rows.len(), 13, "rows of section 6");
+    expectEq(rows[0].id + " " + rows[0].repo, "L01 loup-cmd-echo", "first");
+    expectEq(rows[12].id + " " + rows[12].repo, "C2 loup-cmd-kvstore", "last");
+}
+
+func test_no_status_section(): void {
+    expectEq(planned_repos("# x\n\n| ID | Repo |\n| L1 | a |\n").len(), 0, "nothing");
+}

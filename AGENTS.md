@@ -1,7 +1,12 @@
 # AGENTS.md
 
-This repository is a GitHub template for building a command-line application
-in the Loup programming language. The program is built as a native executable.
+This repository is `fleet-audit`, a maintenance tool for the loup-cmd series
+of example applications written in the Loup programming language: it checks
+every `loup-cmd-*` repository of `myronccai` against the series' definition
+of done and writes a Markdown report. It is a `host.scripted` project: the
+program is the `.lpscr` script in `bin/`, run from source with `loup run`,
+which drives `gh`, `curl` and `git` through `io.proc` and imports modules
+from `lib/`. Nothing is compiled.
 
 ## Skills
 
@@ -19,89 +24,94 @@ mistakes. Load those only as needed.
 
 ```text
 .
-├── package.lppkg                # Loup manifest: name, version, toolchain, [build] entry, [test] pattern
-├── Makefile                     # run, check, test, build, ci, clean
-├── source/                      # all Loup code; modules import each other by path from here
-│   ├── main.loup                # entry point: func main() calls run(runtime.args())
-│   ├── appinfo.loup             # APP_NAME, APP_VERSION, APP_SUMMARY, exit statuses
-│   ├── cli/
-│   │   ├── args.loup            # struct Options, parse_args()
-│   │   ├── usage.loup           # usage(), version_line()
-│   │   └── app.loup             # run(), dispatch(): routes commands, maps errors to exit statuses
-│   └── commands/                # one module per command
-│       └── hello.loup           # sample command: run_hello()
-├── tests/                       # tests: <module>_test.loup files with func test_*(): void
-│   ├── app_test.loup
-│   ├── args_test.loup
-│   └── hello_test.loup
-├── specs/                       # feature specs: <feature>/requirements.md, design.md, tasks.md
-│   ├── README.md
-│   └── command-line-interface/
+├── package.lppkg                # manifest: name, version, toolchain, [build] entry (bin/fleet-audit.lpscr), [test] pattern
+├── Makefile                     # run, audit, check, test, e2e, ci, clean
+├── bin/
+│   └── fleet-audit.lpscr        # entry script (host.scripted, executable): options, collect, audit, report, exit status
+├── lib/
+│   ├── appinfo.loup             # APP_NAME, APP_VERSION, exit statuses
+│   ├── args.loup                # struct Options, parse_args()
+│   ├── usage.loup               # usage(), version_line()
+│   ├── collect.lpscr            # host.scripted: collect_live() via gh/curl/git, collect_fixtures(), --record
+│   ├── github.lpscr             # host.scripted: parse_repo_page(), repo_info(), parse_latest_run() (JSON is Any)
+│   ├── facts.loup               # RepoInfo, RunInfo, TreeFacts, RepoFacts; toml_value(), ci_loup_version(), app_version()
+│   ├── tree.loup                # read_tree(dir): the facts of a checked-out repository
+│   ├── checks.loup              # Check, Audit, audit(): the definition of done
+│   ├── roadmap.loup             # planned_repos(): the roadmap's section 6 table
+│   ├── report.loup              # render_report(): Markdown
+│   └── clock.loup               # utc_stamp()
+├── tests/
+│   ├── *_test.lpscr             # unit tests: func test_*(): void
+│   ├── e2e.sh                   # end-to-end tests: loup run on the fixtures and on the live path
+│   ├── fake-github.sh           # stands in for gh, curl and git (linked into PATH by e2e.sh)
+│   ├── fixtures/fleet/          # an edited recording: meta.json, repos.json, runs/, trees/, ROADMAP.md
+│   └── expected/                # report.md, report-roadmap.md, report-live.md
+├── specs/fleet-audit/           # requirements.md, design.md, tasks.md
 ├── skills/loup-programmer/      # the Loup skill and its references
-├── .github/workflows/ci.yml     # installs Loup and runs `make ci`
-└── build/                       # build output (git-ignored)
+└── .github/workflows/ci.yml     # installs Loup and runs `make ci` (no network, no token)
 ```
 
-## Build, run and test
+## Check, run and test
 
 Prerequisites: Loup 1.26.0 (`loup` and `loup-bootstrap` on `PATH`), `make`,
-and `clang` 17 or later for native builds.
+`bash`; `git` and `gh` or `curl` for a live audit.
 
 | Task | Command | Notes |
 |------|---------|-------|
-| Run from source | `make run ARGS="hello Ann --shout"` | `loup run source/main.loup -- ARGS` |
-| Type-check | `make check` | checks `source/main.loup` and every module it imports; tests are not checked |
-| Run all tests | `make test` | every `tests/*_test.loup` |
-| Run matching tests | `make test TEST_ARGS="--filter value"` | tests whose name contains `value` |
-| Run one test file | `make test TEST_ARGS="--file tests/args_test.loup"` | |
-| Build | `make build` | native binary at `build/myapp` |
-| Run the binary | `build/myapp --help` | |
-| Everything CI runs | `make ci` | check, test, build, then `build/myapp --version` |
-| Clean | `make clean` | removes `build/` and `.temp/` |
+| Audit the fleet | `make audit ROADMAP=../ROADMAP.md > report.md` | network; `GH_TOKEN` optional |
+| Run from source | `make run ARGS="--fixtures tests/fixtures/fleet"` | `loup run bin/fleet-audit.lpscr -- ARGS` |
+| Record a fixture | `loup run bin/fleet-audit.lpscr -- --record DIR > /dev/null` | then edit and trim it |
+| Type-check | `make check` | `loup-bootstrap check FILE` for each `bin/*.lpscr` and its imports |
+| Unit tests | `make test` | each `tests/*_test.lpscr` in turn |
+| One test file | `make test TESTS=tests/checks_test.lpscr` | |
+| End-to-end tests | `make e2e` | `tests/e2e.sh`: fixtures and fake gh/curl/git, no network |
+| Everything CI runs | `make ci` | check, test, e2e, then `--version` |
+| Clean | `make clean` | removes `.temp/` |
 
-Run `make ci` before reporting a change as done. `loup run` and the native
-build do not support the same things, so a change can pass `make test` and
-still fail `make build`.
+Run `make ci` before reporting a change as done. If the report format
+changes, regenerate and review `tests/expected/`:
+`loup run bin/fleet-audit.lpscr -- --fixtures tests/fixtures/fleet > tests/expected/report.md`
+(and `report-roadmap.md` with `--roadmap tests/fixtures/fleet/ROADMAP.md`;
+`report-live.md` comes from the fake live run in `tests/e2e.sh`, with the
+date on line 3 replaced by `DATE`).
 
-Do not call `loup test` or `loup check` directly on Linux x86-64. There `loup`
-is the self-hosted driver: it refuses `check`, and its test runner cannot
-resolve this project's imports. The Makefile uses `loup-bootstrap` (Stage0) for
-both, and sets `LOUPPATH=source` for tests.
+Toolchain facts this project depends on (Loup 1.26.0, Linux x86-64):
+
+- A program that imports `data.toml` or `data.csv` gets that module's parser
+  when it calls `system.json.parse`. Do not import them here.
+- `gh` refuses every command without a token; the anonymous path is `curl`.
+- Self-hosted `loup run`: `exec`/`io.proc.run` of a missing program returns
+  status 127 (Stage0 throws), `IoError` cannot be caught, and backslash
+  escapes inside `i"..."` are not processed. Check with `command -v` first,
+  check files exist before reading, and keep escapes in plain strings.
+- `loup run SCRIPT --long` takes `--long` as its own flag (the self-hosted
+  driver drops it silently): script options go after `--`.
+- A helper function named `box` is typed `any` by the checker (Loup has a
+  `Box` keyword); pick another name.
+- `loup-bootstrap test` with all files at once fails random tests with an
+  empty `RuntimeError` on a busy machine; the Makefile runs one file at a time.
 
 ## Making a change
 
-1. Write or update the spec in `specs/<feature>/` (see [specs/README.md](specs/README.md)).
-2. Change the code under `source/`.
-3. Add or update tests in `tests/`.
+1. Update the spec in `specs/fleet-audit/` (see [specs/README.md](specs/README.md)).
+2. Change the code: collecting in `lib/collect.lpscr` and
+   `lib/github.lpscr`, everything else in the pure `lib/*.loup` modules.
+3. Add or update unit tests and cases in `tests/e2e.sh`; extend
+   `tests/fixtures/fleet` (and its README) when a new check needs data.
 4. Run `make ci`.
-5. Tick the finished tasks in `specs/<feature>/tasks.md`.
-
-To add a command:
-
-1. Create `source/commands/<name>.loup` with `@mode(host.dual)` and
-   `pub func run_<name>(opts: Options): int`, returning an exit status from
-   `appinfo`.
-2. Add an arm for it to `dispatch` in `source/cli/app.loup`.
-3. Describe it in `usage()` in `source/cli/usage.loup`.
-4. Add any new options to `Options` and `parse_args` in `source/cli/args.loup`.
-5. Add `tests/<name>_test.loup`.
+5. Tick the finished tasks in `specs/fleet-audit/tasks.md`.
 
 ## Conventions
 
-- Every source file is `@mode(host.dual)` with the `.loup` extension. Only
-  `source/main.loup` has a `main()`.
-- Modules import each other by path from `source/`:
-  `from cli.args import (Options);`. Tests import them the same way. Do not
-  use relative imports (`from .args import ...`): the self-hosted `loup run`
-  on Linux x86-64 fails on them.
-- Struct fields read from another module must be `pub`.
-- The native build supports less than `loup run` does. For example,
-  `list.is_empty()` fails native codegen (`E-CODEGEN-UNHANDLED-METHOD`); use
-  `len() == 0`.
-- Keep `APP_VERSION` in `source/appinfo.loup` equal to `version` in
-  `package.lppkg`.
-- The skill's examples use the `loup init` layout (`src/`, `tests/`, and
-  `from ..src.x import` in tests). This project uses `source/` and
-  `tests/` with plain imports; follow this file.
-- The skill documents toolchain 1.25.1; this template targets 1.26.0. When
+- `bin/fleet-audit.lpscr` is `@mode(host.scripted)` with a
+  `#!/usr/bin/env -S loup run` line and the executable bit; keep it thin.
+- `lib/*.loup` are `@mode(host.dual)`: pure, no `Any`. `lib/*.lpscr` are the
+  scripted modules that need `Any` or run programs.
+- Imports are relative: `from ..lib.x import (...)` in `bin/` and `tests/`,
+  `from .x import (...)` inside `lib/`.
+- Never print a token. The tool reads `GH_TOKEN`/`GITHUB_TOKEN` only to
+  decide between `gh` and `curl`; `gh` reads the token itself.
+- Keep `APP_VERSION` in `lib/appinfo.loup` equal to `version` in
+  `package.lppkg` (the tool checks this in every other repository too).
+- The skill documents toolchain 1.25.1; this project targets 1.26.0. When
   they disagree, trust the toolchain's behaviour.

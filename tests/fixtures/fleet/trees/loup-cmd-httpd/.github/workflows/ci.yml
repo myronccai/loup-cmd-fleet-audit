@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # Keep in step with `loup` in package.lppkg.
+      LOUP_VERSION: "1.26.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Loup ${{ env.LOUP_VERSION }}
+        run: |
+          curl -fsSL "https://github.com/code-craft-ai-company/loup-releases/releases/download/v${LOUP_VERSION}/loup-install.sh" \
+            | sh -s -- --version "${LOUP_VERSION}" --no-modify-path -y
+          echo "$HOME/.loup/bin" >> "$GITHUB_PATH"
+
+      - name: Show toolchain
+        run: |
+          loup --version
+          loup-bootstrap --version
+          curl --version | head -1
+          python3 --version
+
+      # The program is a script: there is nothing to build. `make ci`
+      # type-checks it, runs the handler's unit tests, and starts the server
+      # on a free port for the end-to-end tests (curl; python3 finds the port).
+      - name: Check, unit tests and end-to-end tests
+        run: make ci

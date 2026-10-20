@@ -1,0 +1,16 @@
+{
+  "total_count": 2,
+  "workflow_runs": [
+    {
+      "id": 39382714714,
+      "name": "CI",
+      "head_branch": "main",
+      "head_sha": "97d1b79fb486b633fa5662526e713ab57035a91f",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-20T06:50:12Z",
+      "html_url": "https://github.com/myronccai/loup-cmd-echo/actions/runs/39382714714"
+    }
+  ]
+}

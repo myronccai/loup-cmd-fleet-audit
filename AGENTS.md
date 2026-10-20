@@ -62,7 +62,7 @@ Prerequisites: Loup 1.26.0 (`loup` and `loup-bootstrap` on `PATH`), `make`,
 | Run from source | `make run ARGS="--fixtures tests/fixtures/fleet"` | `loup run bin/fleet-audit.lpscr -- ARGS` |
 | Record a fixture | `loup run bin/fleet-audit.lpscr -- --record DIR > /dev/null` | then edit and trim it |
 | Type-check | `make check` | `loup-bootstrap check FILE` for each `bin/*.lpscr` and its imports |
-| Unit tests | `make test` | each `tests/*_test.lpscr` in turn |
+| Unit tests | `make test` | each `tests/*_test.lpscr` in turn, one test at a time (`--no-parallel`) |
 | One test file | `make test TESTS=tests/checks_test.lpscr` | |
 | End-to-end tests | `make e2e` | `tests/e2e.sh`: fixtures and fake gh/curl/git, no network |
 | Everything CI runs | `make ci` | check, test, e2e, then `--version` |
@@ -88,8 +88,10 @@ Toolchain facts this project depends on (Loup 1.26.0, Linux x86-64):
   driver drops it silently): script options go after `--`.
 - A helper function named `box` is typed `any` by the checker (Loup has a
   `Box` keyword); pick another name.
-- `loup-bootstrap test` with all files at once fails random tests with an
-  empty `RuntimeError` on a busy machine; the Makefile runs one file at a time.
+- `loup-bootstrap test` runs tests in parallel threads, and then fails random
+  tests with an empty `RuntimeError` on a busy machine (also within one file:
+  CI once failed `facts_test.lpscr::test_toml_value` this way). The Makefile
+  runs one file at a time with `--no-parallel`; keep both.
 
 ## Making a change
 

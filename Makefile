@@ -36,13 +36,15 @@ check:
 		$(LOUP_BOOTSTRAP) check --no-color $$script || exit 1; \
 	done
 
-# Unit tests (tests/*_test.lpscr), one file at a time: run all at once, the
-# 1.26.0 runner fails random tests with an empty RuntimeError on a busy
-# machine. They read tests/fixtures/fleet; no network.
+# Unit tests (tests/*_test.lpscr), one file at a time and one test at a
+# time (--no-parallel): in parallel, the 1.26.0 runner fails random tests
+# with an empty RuntimeError on a busy machine (seen on CI in
+# facts_test.lpscr, whose tests share module-level Regex values). They read
+# tests/fixtures/fleet; no network.
 # Narrow the run: `make test TESTS=tests/checks_test.lpscr TEST_ARGS="--filter ci"`.
 test:
 	@status=0; for t in $(TESTS); do \
-		$(LOUP_BOOTSTRAP) test --no-color --file $$t $(TEST_ARGS) || status=1; \
+		$(LOUP_BOOTSTRAP) test --no-color --no-parallel --file $$t $(TEST_ARGS) || status=1; \
 	done; exit $$status
 
 # End-to-end tests: run the script with `loup run` on the recorded fleet,

@@ -56,6 +56,9 @@ mistakes. Load those only as needed.
 Prerequisites: Loup 1.26.0 (`loup` and `loup-bootstrap` on `PATH`), `make`,
 `bash`; `git` and `gh` or `curl` for a live audit.
 
+Loup Lite comes from <https://github.com/code-craft-ai-company/loup-releases>;
+[README.md](README.md#installing-loup-lite) has the install commands.
+
 | Task | Command | Notes |
 |------|---------|-------|
 | Audit the fleet | `make audit ROADMAP=../ROADMAP.md > report.md` | network; `GH_TOKEN` optional |

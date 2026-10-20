@@ -97,7 +97,7 @@ What it checks, for each repository:
 | `spec` | `specs/<name>/` has `requirements.md`, `design.md` and `tasks.md` |
 | `readme` | `README.md` has a "Differences from ..." or "What this example shows" section |
 | `ci` | the latest GitHub Actions run on the default branch succeeded (a run still going is `?`) |
-| `license` | a `LICENSE` file exists (a warning only: the series has not chosen a license yet) |
+| `license` | a `LICENSE` file exists (a warning only: a repository can be done without one) |
 
 A repository is **done** when every check but `license` passes. With
 `--roadmap`, the report ends with section 6 of the roadmap (ID, Repo,
@@ -232,3 +232,9 @@ specs/fleet-audit/          # requirements, design, tasks
 
 [AGENTS.md](AGENTS.md) has every check and test command and the conventions
 for changing the code.
+
+## License
+
+[MIT](LICENSE), copyright 2026 Code Craft AI LLC. The Loup skill in
+[`skills/loup-programmer/`](skills/loup-programmer/) is copied from the Loup
+project and is not covered by this license; it keeps the Loup project's terms.

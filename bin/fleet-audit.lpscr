@@ -4,10 +4,19 @@
 # fleet-audit: check every loup-cmd-* repository against the series'
 # definition of done and write a Markdown report.
 #
-# This script is the program's top level: options, collecting (live through
-# gh/curl and git, or from a recording), the checks, and the report. The
-# collecting is lib/collect.lpscr; the checks and the report are pure
-# host.dual modules.
+# Runtime: host.scripted. The Loup scripted runtime interprets this file from
+# source (`loup run bin/fleet-audit.lpscr -- ARGS`, as `make run`, `make
+# audit`, tests/e2e.sh and CI run it); its top-level statements run in order
+# and there is no compile step: a script entry cannot be compiled. Long
+# options go after the `--` (before it, the self-hosted `loup run` drops
+# them); the shebang allows `./bin/fleet-audit.lpscr -- ARGS` too. `make
+# check` type-checks it and every lib/ module it imports with Stage0.
+#
+# Structure: parse the options (status 2 on a usage error), read the
+# roadmap when one is given, collect the facts (lib/collect.lpscr: live
+# through gh or curl and git, or from a recording), audit each repository
+# (lib/checks), render the Markdown (lib/report), and exit 0 only when every
+# repository is done. The checks and the report are pure host.dual modules.
 
 from io.fs import (isFile);
 from ..lib.appinfo import (APP_NAME, EXIT_OK, EXIT_PROBLEMS, EXIT_USAGE);
@@ -43,6 +52,8 @@ if (opts.roadmap.len() > 0) {
     planned = planned_repos(readText(opts.roadmap));
 }
 
+# Nothing collected at all (no repository list, a bad recording) is status 2;
+# a failure for one repository is kept as an "unknown" fact instead.
 let collected: Collected = if (opts.fixtures.len() > 0) { collect_fixtures(opts.fixtures) } else { collect_live(opts.owner, opts.prefix, opts.record) };
 if (!collected.ok) {
     printErr(i"{$ APP_NAME $}: {$ collected.error $}");

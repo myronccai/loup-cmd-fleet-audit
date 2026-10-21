@@ -2,6 +2,16 @@
 
 # Reads the facts the audit needs out of a checked-out repository (a clone,
 # or a recorded tree under tests/fixtures).
+#
+# Runtime: host.dual, but only ever interpreted here: bin/fleet-audit.lpscr
+# imports it under `loup run`, and `make test` loads it into the unit tests
+# under Stage0 (`loup-bootstrap test`). Being host.dual keeps it compilable.
+#
+# Structure: read_tree looks at the manifest, the CI workflow, the program
+# sources (for APP_VERSION), the todo file, a license, the specs and the
+# README, in that order. Every file that supplies a fact goes into
+# TreeFacts.files: that list is what `--record` copies, so a recording
+# holds exactly the files that the same audit needs on replay.
 
 from io.fs import (walk, isDir, isFile, listDir);
 from io.path import (extname);
@@ -48,6 +58,7 @@ pub func read_tree(dir: string): TreeFacts {
         files.push(WORKFLOW);
     }
 
+    # The first program source in walk order that defines the version.
     var found_version = "";
     var version_file = "";
     for (rel in walk(dir)) {
@@ -74,6 +85,8 @@ pub func read_tree(dir: string): TreeFacts {
         }
     }
 
+    # A spec counts when its directory holds all three files; the template's
+    # sample spec never counts. Names are sorted: listDir's order is the OS's.
     var specs: list[string] = [];
     if (isDir(at(dir, "specs"))) {
         var names = listDir(at(dir, "specs"));

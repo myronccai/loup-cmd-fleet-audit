@@ -1,5 +1,14 @@
 @mode(host.scripted)
 
+# Unit tests for the offline collector (lib/collect.lpscr): the recorded
+# fleet's metadata, repositories and fact states, and its error messages.
+#
+# Runtime: host.scripted, run by the test runner: `make test` interprets this
+# file with Stage0 (`loup-bootstrap test --no-parallel --file
+# tests/collect_test.lpscr`), one test per `func test_*()`, importing lib/
+# with relative imports. It is not part of the program. It reads the recorded
+# fleet in tests/fixtures/fleet; no network.
+
 from debug.assert import (expect, expectEq);
 from ..lib.collect import (Collected, collect_fixtures, transport_phrase);
 

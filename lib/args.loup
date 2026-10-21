@@ -3,8 +3,20 @@
 # Command-line parsing for fleet-audit, by hand (Loup 1.26 has no CLI
 # library).
 #
-# Grammar: fleet-audit [OPTION]...
-#   Value options take `-o NAME`, `-oNAME`, `--owner NAME` or `--owner=NAME`.
+# Runtime: host.dual, but only ever interpreted here: bin/fleet-audit.lpscr
+# imports it under `loup run`, and `make test` loads it into the unit tests
+# under Stage0 (`loup-bootstrap test`). Being host.dual keeps it compilable.
+#
+# Grammar: fleet-audit [OPTION]...  (no operands)
+#   Value options take `-o NAME`, `-oNAME`, `--owner NAME` or `--owner=NAME`;
+#   --record and --output have no short form. Short flags do not cluster
+#   (`-hV` is an error). Messages use GNU getopt's wording where it has one.
+#
+# Structure: parse_args makes one pass over argv. Each word becomes a long
+# option name plus an optional attached value; flags are set at once, and a
+# value (attached, or the next word) goes into a dict keyed by the long
+# name, so a repeated option keeps its last value. The dict becomes Options
+# after the one check that involves two options.
 
 pub const DEFAULT_OWNER: string = "myronccai";
 pub const DEFAULT_PREFIX: string = "loup-cmd-";
@@ -50,6 +62,7 @@ pub func parse_args(argv: list[string]): Result[Options, string] {
             return Err(i"extra operand '{$ arg $}'");
         }
 
+        # Normalise: `name` is the long form, `value` an attached value.
         var name = arg;
         var value: Option[string] = None;
         if (arg.startsWith("--")) {
@@ -87,6 +100,8 @@ pub func parse_args(argv: list[string]): Result[Options, string] {
             }
             continue;
         }
+        # A value option without an attached value takes the next word,
+        # whatever it looks like (`-o -x` sets the owner to `-x`).
         if (value.is_none()) {
             if (i >= argv.len()) {
                 return Err(if (arg.startsWith("--")) { i"option '{$ name $}' requires an argument" } else { i"option requires an argument -- '{$ arg.slice(1, 2) $}'" });

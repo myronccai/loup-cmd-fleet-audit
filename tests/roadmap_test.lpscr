@@ -1,5 +1,13 @@
 @mode(host.scripted)
 
+# Unit tests for reading the roadmap's status table (lib/roadmap.loup).
+#
+# Runtime: host.scripted, run by the test runner: `make test` interprets this
+# file with Stage0 (`loup-bootstrap test --no-parallel --file
+# tests/roadmap_test.lpscr`), one test per `func test_*()`, importing lib/
+# with relative imports. It is not part of the program. It reads the recorded
+# fleet in tests/fixtures/fleet; no network.
+
 from debug.assert import (expectEq);
 from ..lib.roadmap import (planned_repos);
 

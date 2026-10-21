@@ -1,5 +1,15 @@
 @mode(host.dual)
 
+# Fixture: loup-cmd-grep's source/appinfo.loup as recorded in
+# tests/fixtures/fleet, one of the files the audit reads from a repository.
+# Edited for the tests: its version, 0.2.0, differs from package.lppkg, so the
+# `version` check fails.
+#
+# Runtime: host.dual, as in loup-cmd-grep, but never compiled or run here:
+# lib/tree.loup reads it as text to find the APP_VERSION constant, which the
+# `version` check compares with the version in the package.lppkg beside it.
+# The original file's own comments follow.
+#
 # Application identity. Keep APP_NAME and APP_VERSION in step with `name`
 # and `version` in package.lppkg.
 

@@ -1,11 +1,19 @@
 @mode(host.dual)
 
-# Reads the status table of the series roadmap (its section 6):
+# Reads the status table of the series roadmap (its section 6), for the
+# report's --roadmap section:
 #
 #   ## 6. Status
 #   | ID | Repo | Created | Spec | CI green | Done |
 #   |---|---|---|---|---|---|
 #   | L01 | loup-cmd-echo | ☐ | ☐ | ☐ | ☐ |
+#
+# Runtime: host.dual, but only ever interpreted here: bin/fleet-audit.lpscr
+# imports it under `loup run`, and `make test` loads it into the unit tests
+# under Stage0 (`loup-bootstrap test`). Being host.dual keeps it compilable.
+#
+# Only the ID and Repo columns are read: the report recomputes the others
+# from the audit.
 
 pub struct Planned {
     pub id: string;

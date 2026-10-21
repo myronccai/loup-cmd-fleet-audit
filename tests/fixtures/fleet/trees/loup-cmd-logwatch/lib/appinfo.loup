@@ -1,5 +1,13 @@
 @mode(host.dual)
 
+# Fixture: loup-cmd-logwatch's lib/appinfo.loup as recorded in
+# tests/fixtures/fleet, one of the files the audit reads from a repository.
+#
+# Runtime: host.dual, as in loup-cmd-logwatch, but never compiled or run here:
+# lib/tree.loup reads it as text to find the APP_VERSION constant, which the
+# `version` check compares with the version in the package.lppkg beside it.
+# The original file's own comments follow.
+#
 # Application identity. Keep APP_NAME and APP_VERSION in step with `name`
 # and `version` in package.lppkg.
 

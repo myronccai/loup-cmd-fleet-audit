@@ -1,6 +1,12 @@
 @mode(host.scripted)
 
-# Collects the facts the audit checks.
+# Collects the facts the audit checks, live from GitHub or from a recording.
+#
+# Runtime: host.scripted. A module of the script bin/fleet-audit.lpscr,
+# interpreted with it by `loup run`. It is a script module, not host.dual,
+# because it handles parsed JSON as `Any` and runs gh, curl and git through
+# io.proc. The unit tests (Stage0) call only the offline path; tests/e2e.sh
+# runs the live path against tests/fake-github.sh, never the network.
 #
 # Live: the GitHub REST API through `gh api` (or `curl` without a token) for
 # the repository list and each latest Actions run, and a shallow `git clone`
@@ -139,6 +145,8 @@ pub func collect_live(owner: string, prefix: string, record: string): Collected 
     }
     let when = utc_stamp(realtimeNs() / 1000000000);
 
+    # The repository list, 100 a page, until a short page. Failing to list
+    # is the one error that stops the run.
     var items: list[Any] = [];
     var page = 1;
     while (true) {
@@ -170,6 +178,9 @@ pub func collect_live(owner: string, prefix: string, record: string): Collected 
         write_file(record + "/repos.json", stringifyIndented(repos, 2) + "\n");
     }
 
+    # Per repository: the latest run on the default branch, then a shallow
+    # clone for read_tree. Each failure becomes an "unknown" fact with its
+    # reason; with --record, what was read is saved in the recording layout.
     var facts: list[RepoFacts] = [];
     var count = 0;
     for (repo in repos) {
@@ -188,6 +199,8 @@ pub func collect_live(owner: string, prefix: string, record: string): Collected 
             Err(msg) => RunLookup(state = "unknown", run = no_run(), error = msg),
         };
 
+        # No prompts and no configured credential helper: the audit sees the
+        # repositories as an anonymous reader does, and never waits on input.
         let dest = work + "/" + info.name;
         let clone = run(["env", "GIT_TERMINAL_PROMPT=0", "git", "-c", "credential.helper=", "clone", "--quiet", "--depth", "1", "--branch", info.default_branch, "https://github.com/" + owner + "/" + info.name + ".git", dest]);
         if (clone.exit_code == 0 and isDir(dest)) {

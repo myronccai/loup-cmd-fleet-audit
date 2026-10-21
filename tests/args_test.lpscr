@@ -1,5 +1,14 @@
 @mode(host.scripted)
 
+# Unit tests for fleet-audit's option parsing (lib/args.loup): the defaults,
+# every value form, and each usage error message.
+#
+# Runtime: host.scripted, run by the test runner: `make test` interprets this
+# file with Stage0 (`loup-bootstrap test --no-parallel --file
+# tests/args_test.lpscr`), one test per `func test_*()`, importing lib/ with
+# relative imports. It is not part of the program. It needs no files and no
+# network.
+
 from debug.assert import (expect, expectEq);
 from ..lib.args import (Options, parse_args);
 

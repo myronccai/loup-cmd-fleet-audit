@@ -1,6 +1,17 @@
 @mode(host.dual)
 
 # The definition of done, as checks over a repository's facts.
+#
+# Runtime: host.dual, but only ever interpreted here: bin/fleet-audit.lpscr
+# imports it under `loup run`, and `make test` loads it into the unit tests
+# under Stage0 (`loup-bootstrap test`). Being host.dual keeps it compilable.
+#
+# Structure: the check names and topic lists; the Check and Audit records;
+# a function for each check that takes more than a line (topics, pin,
+# version, ci); then audit(), which runs every check and decides `done`, and
+# check_named(), which the report uses to look one up. A check is "pass",
+# "fail" or "unknown" (the fact could not be collected); unknown counts
+# against done, as a failure does.
 
 from .facts import (RepoFacts, RunInfo, TreeFacts);
 
@@ -121,10 +132,13 @@ pub func check_ci(state: string, run: RunInfo, error: string): Check {
 
 # Runs every check over `f`.
 pub func audit(f: RepoFacts): Audit {
+    # Push in CHECK_NAMES order: the report's problem lines follow it.
     var checks: list[Check] = [];
     checks.push(if (f.info.description.trim().len() > 0) { pass("description") } else { fail("description", "no description") });
     checks.push(check_topics(f.info.topics));
 
+    # Without the repository's files (a clone that failed, or a tree that
+    # was not recorded) the file checks are unknown, not failed.
     let t = f.tree;
     if (f.tree_state == UNKNOWN) {
         for (name in ["todos", "pin", "version", "spec", "readme"]) {

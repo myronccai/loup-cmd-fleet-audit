@@ -1,38 +1,18 @@
 @mode(host.dual)
 
-# UTC time stamps from seconds since 1970, with integer date arithmetic:
-# the date of a live run (the report's date line, a recording's
-# recorded_at).
+# UTC time stamps from seconds since 1970: the date of a live run (the
+# report's date line, a recording's recorded_at).
 #
 # Runtime: host.dual, but only ever interpreted here: bin/fleet-audit.lpscr
 # imports it under `loup run`, and `make test` loads it into the unit tests
-# under Stage0 (`loup-bootstrap test`). Being host.dual keeps it compilable.
+# under Stage0 (`loup-bootstrap test`). Being host.dual keeps it compilable:
+# core.datetime works in every hosted lane.
 
-from system.text import (padStart);
+from core.datetime import (DateTime);
 
-func pad2(n: int): string {
-    return padStart(str(n), 2, "0");
-}
-
-# `2026-10-20 07:50 UTC`.
-#
-# The date is Howard Hinnant's civil_from_days. Days are counted from
-# 0000-03-01 (719468 days before 1970-01-01), so that every 400-year era of
-# 146097 days starts in March and a leap day is the last day of its year.
-# The day of the era gives the year of the era, then the day of that year,
-# then the month counted from March (mp 0 = March, 10 = January) and the
-# day; January and February belong to the next civil year. The `z - 146096`
-# makes the division round toward minus infinity before 0000-03-01.
+# `2026-10-20 07:50 UTC`: the ISO date, then the hours and minutes of the
+# ISO time (`07:50:12`); the calendar arithmetic is core.datetime's.
 pub func utc_stamp(epoch_seconds: int): string {
-    let z = epoch_seconds / 86400 + 719468;
-    let era = (if (z >= 0) { z } else { z - 146096 }) / 146097;
-    let doe = z - era * 146097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = if (mp < 10) { mp + 3 } else { mp - 9 };
-    let year = yoe + era * 400 + (if (month <= 2) { 1 } else { 0 });
-    let rest = epoch_seconds % 86400;
-    return str(year) + "-" + pad2(month) + "-" + pad2(day) + " " + pad2(rest / 3600) + ":" + pad2((rest / 60) % 60) + " UTC";
+    let t = DateTime.utcFromTimestamp(epoch_seconds as float);
+    return t.date().isoformat() + " " + t.time().isoformat().slice(0, 5) + " UTC";
 }

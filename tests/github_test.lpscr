@@ -57,3 +57,17 @@ func test_latest_run(): void {
     let limited = parse_latest_run("{\"message\": \"API rate limit exceeded for 192.0.2.1.\"}");
     expectEq(limited.state + ": " + limited.error, "unknown: API rate limit exceeded for 192.0.2.1.", "error");
 }
+
+# A field of the wrong JSON type reads as if it were missing.
+func test_mistyped_fields(): void {
+    let items = parse_repo_page("[{\"name\": \"loup-cmd-y\", \"archived\": \"yes\", \"is_template\": 1, \"description\": 5, \"topics\": [\"loup\", 3, null, \"loup-example\"]}, {\"name\": 7, \"topics\": \"loup\"}]").unwrap();
+    let info = repo_info(items[0]);
+    expect(wanted(items[0], "loup-cmd-"), "\"yes\" and 1 are not true");
+    expectEq(info.description, "", "a number is not a description");
+    expectEq(info.topics.join(","), "loup,loup-example", "only the string topics");
+    expectEq(repo_info(items[1]).name, "", "a number is not a name");
+    expectEq(repo_info(items[1]).topics.len(), 0, "topics that are not a list");
+    let lookup = parse_latest_run("{\"workflow_runs\": [{\"id\": \"12\", \"status\": \"completed\", \"conclusion\": true}]}");
+    expectEq(lookup.run.id, 0, "an id that is not a number");
+    expectEq(lookup.run.conclusion, "", "a conclusion that is not a string");
+}

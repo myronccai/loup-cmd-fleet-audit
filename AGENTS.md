@@ -111,7 +111,10 @@ Toolchain facts this project depends on (Loup 1.26.0, Linux x86-64):
 - `bin/fleet-audit.lpscr` is `@mode(host.scripted)` with a
   `#!/usr/bin/env -S loup run` line and the executable bit; keep it thin.
 - `lib/*.loup` are `@mode(host.dual)`: pure, no `Any`. `lib/*.lpscr` are the
-  scripted modules that need `Any` or run programs.
+  scripted modules that need `Any` or run programs. Nothing is compiled, so
+  lib/ may use interpreter-only features (list `filter`/`all`, `set`,
+  postfix `!`) as long as both `loup run` and Stage0 run them; say so in
+  the module's Runtime header.
 - Imports are relative: `from ..lib.x import (...)` in `bin/` and `tests/`,
   `from .x import (...)` inside `lib/`.
 - Never print a token. The tool reads `GH_TOKEN`/`GITHUB_TOKEN` only to

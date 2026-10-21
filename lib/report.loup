@@ -5,7 +5,9 @@
 #
 # Runtime: host.dual, but only ever interpreted here: bin/fleet-audit.lpscr
 # imports it under `loup run`, and `make test` loads it into the unit tests
-# under Stage0 (`loup-bootstrap test`). Being host.dual keeps it compilable.
+# under Stage0 (`loup-bootstrap test`). Its own code would compile (the
+# system.collections functions it uses build natively), but it imports
+# lib/checks.loup, which does not.
 #
 # Structure: small cell helpers; then one function per part of the report
 # (summary_line, checks_table, problem_lines, warning_lines, roadmap_table);
@@ -13,6 +15,7 @@
 # Problems are listed per repository, warnings per check, so that a
 # warning every repository shares (no LICENSE) takes one line.
 
+from system.collections import (countWhere, filter, any);
 from .checks import (Audit, Check, CHECK_NAMES, WARNING_CHECKS, PASS, FAIL, UNKNOWN, check_named);
 from .roadmap import (Planned);
 
@@ -42,12 +45,7 @@ func link(text: string, url: string): string {
 }
 
 pub func summary_line(audits: list[Audit]): string {
-    var done = 0;
-    for (a in audits) {
-        if (a.done) {
-            done += 1;
-        }
-    }
+    let done = countWhere(audits, func(a: Audit): bool { return a.done; });
     let noun = if (audits.len() == 1) { "repository" } else { "repositories" };
     return "**" + str(audits.len()) + " " + noun + ": " + str(done) + " done, " + str(audits.len() - done) + " with problems.**";
 }
@@ -152,17 +150,13 @@ pub func roadmap_table(audits: list[Audit], planned: list[Planned]): string {
         }
         lines.push("| " + p.id + " | " + p.repo + " | " + tick(found) + " | " + tick(spec) + " | " + tick(ci) + " | " + tick(done) + " |");
     }
+    # Audited repositories that no roadmap row names.
     var extra: list[string] = [];
-    for (a in audits) {
-        var listed = false;
-        for (p in planned) {
-            if (p.repo == a.facts.info.name) {
-                listed = true;
-            }
-        }
-        if (!listed) {
-            extra.push(a.facts.info.name);
-        }
+    let unplanned = filter(audits, func(a: Audit): bool {
+        return !any(planned, func(p: Planned): bool { return p.repo == a.facts.info.name; });
+    });
+    for (a in unplanned) {
+        extra.push(a.facts.info.name);
     }
     lines.push("");
     var tail = "Created " + str(created) + " of " + str(planned.len()) + ".";

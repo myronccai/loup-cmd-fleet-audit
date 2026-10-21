@@ -7,12 +7,13 @@
 # Like collect.lpscr it is a script module because parsed JSON is `Any`,
 # which host.dual modules flag with a warning on every run.
 #
-# Structure: typed getters over a JSON object (a missing or mistyped field
-# reads as "", false or 0), error_text for the API's error documents, then
-# one reader per endpoint: parse_repo_page, wanted and repo_info for the
-# repository list, parse_latest_run for a repository's Actions runs. The
-# API answers errors with JSON too (`{"message": ...}`), so both parse
-# functions tell an error document from the one they expect.
+# Structure: typed getters over a JSON object (a missing field, or one whose
+# value `as?` cannot cast to the type, reads as "", false or 0), error_text
+# for the API's error documents, then one reader per endpoint:
+# parse_repo_page, wanted and repo_info for the repository list,
+# parse_latest_run for a repository's Actions runs. The API answers errors
+# with JSON too (`{"message": ...}`), so both parse functions tell an error
+# document from the one they expect.
 
 from system.json import (parse);
 from .facts import (RepoInfo, RunInfo, no_run);
@@ -28,7 +29,7 @@ pub struct RunLookup {
 func text_of(obj: dict[string, Any], key: string): string {
     match obj.get(key) {
         Some(v) => {
-            return if (v is string) { v as string } else { "" };
+            return (v as? string) ?? "";
         },
         None => {
             return "";
@@ -39,7 +40,7 @@ func text_of(obj: dict[string, Any], key: string): string {
 func flag_of(obj: dict[string, Any], key: string): bool {
     match obj.get(key) {
         Some(v) => {
-            return v is bool and (v as bool);
+            return (v as? bool) ?? false;
         },
         None => {
             return false;
@@ -50,7 +51,7 @@ func flag_of(obj: dict[string, Any], key: string): bool {
 func int_of(obj: dict[string, Any], key: string): int {
     match obj.get(key) {
         Some(v) => {
-            return if (v is int) { v as int } else { 0 };
+            return (v as? int) ?? 0;
         },
         None => {
             return 0;
@@ -97,11 +98,10 @@ pub func repo_info(repo: Any): RepoInfo {
     var topics: list[string] = [];
     match obj.get("topics") {
         Some(v) => {
-            if (v is list[Any]) {
-                for (t in v as list[Any]) {
-                    if (t is string) {
-                        topics.push(t as string);
-                    }
+            for (t in (v as? list[Any]) ?? []) {
+                match t as? string {
+                    Some(topic) => { topics.push(topic); },
+                    None => {},
                 }
             }
         },

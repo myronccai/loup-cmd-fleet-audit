@@ -186,6 +186,14 @@ repository list).
   `lib/collect.lpscr`); the facts, checks, roadmap parser and report are
   pure `host.dual` modules (`lib/*.loup`), imported with relative paths
   (`from ..lib.checks import (audit);`).
+- **Interpreter features where they fit.** The repository list is paged
+  by a generator (`gen func repo_pages`, fed a fetch function, so the
+  tests can hand it canned pages); the clones live in a `TempDir` that is a
+  `Closeable`, removed when its `with` block ends, and each clone is deleted
+  in a `finally` once read. The checks use the list methods `filter` and
+  `all`, the tree reader a `set` and a labelled `continue`, the JSON
+  getters `as?`. Nothing is compiled, so these interpreter-only features
+  are fine here.
 - **Testing without the network.** `--record` saves exactly what an audit
   read; `--fixtures` replays it. The unit tests read a recording, and the
   end-to-end tests also run the live code path with

@@ -4,7 +4,9 @@
 #
 # Runtime: host.dual, but only ever interpreted here: bin/fleet-audit.lpscr
 # imports it under `loup run`, and `make test` loads it into the unit tests
-# under Stage0 (`loup-bootstrap test`). Being host.dual keeps it compilable.
+# under Stage0 (`loup-bootstrap test`). It is not compilable: the list
+# methods filter and all, which both interpreters run, have no native
+# lowering in Loup 1.26.0.
 #
 # Structure: the check names and topic lists; the Check and Audit records;
 # a function for each check that takes more than a line (topics, pin,
@@ -51,23 +53,13 @@ func unknown(name: string, detail: string): Check {
     return Check(name = name, state = UNKNOWN, detail = detail);
 }
 
+# The group topics among `topics`, in their order.
 pub func group_topics(topics: list[string]): list[string] {
-    var groups: list[string] = [];
-    for (t in topics) {
-        if (GROUP_TOPICS.contains(t)) {
-            groups.push(t);
-        }
-    }
-    return groups;
+    return topics.filter(func(t: string): bool { return GROUP_TOPICS.contains(t); });
 }
 
 pub func check_topics(topics: list[string]): Check {
-    var missing: list[string] = [];
-    for (t in REQUIRED_TOPICS) {
-        if (!topics.contains(t)) {
-            missing.push(t);
-        }
-    }
+    let missing: list[string] = REQUIRED_TOPICS.filter(func(t: string): bool { return !topics.contains(t); });
     let groups = group_topics(topics);
     if (missing.len() > 0) {
         return fail("topics", "missing " + missing.join(", "));
@@ -160,12 +152,7 @@ pub func audit(f: RepoFacts): Audit {
         checks.push(if (t.has_license) { pass("license") } else { fail("license", "no LICENSE file") });
     }
 
-    var done = true;
-    for (c in checks) {
-        if (c.state != PASS and !WARNING_CHECKS.contains(c.name)) {
-            done = false;
-        }
-    }
+    let done = checks.all(func(c: Check): bool { return c.state == PASS or WARNING_CHECKS.contains(c.name); });
     let groups = group_topics(f.info.topics);
     let group = if (groups.len() == 1) { groups[0].slice(5) } else { "" };
     return Audit(facts = f, group = group, checks = checks, done = done);

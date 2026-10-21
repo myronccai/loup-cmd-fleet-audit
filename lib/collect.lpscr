@@ -5,13 +5,19 @@
 # Runtime: host.scripted. A module of the script bin/fleet-audit.lpscr,
 # interpreted with it by `loup run`. It is a script module, not host.dual,
 # because it handles parsed JSON as `Any` and runs gh, curl and git through
-# io.proc. The unit tests (Stage0) call only the offline path; tests/e2e.sh
-# runs the live path against tests/fake-github.sh, never the network.
+# io.proc. The unit tests (Stage0) call the offline path, and repo_pages
+# and TempDir, with no network; tests/e2e.sh runs the live path against
+# tests/fake-github.sh, never the network.
 #
 # Live: the GitHub REST API through `gh api` (or `curl` without a token) for
 # the repository list and each latest Actions run, and a shallow `git clone`
 # of each repository for its files. All of it runs through io.proc, and
 # every failure is kept as an "unknown" fact rather than stopping the run.
+#
+# Structure: the transport (choose_transport, api_get); repo_pages, a
+# generator over the pages of the repository list; TempDir, the scratch
+# directory for the clones; collect_live; then the offline reader,
+# collect_fixtures.
 #
 # Offline: the same data read from a recording directory:
 #   meta.json            owner, prefix, recorded_at, source
@@ -89,6 +95,42 @@ func api_get(transport: string, path: string): Result[string, string] {
     return Err(if (reason.len() > 0) { reason } else { argv[0] + " exited with status " + str(r.exit_code) });
 }
 
+# The repository list is fetched this many objects to a page (the API's
+# maximum); a shorter page is the last.
+pub const PAGE_SIZE: int = 100;
+
+# The pages of the repository list, in order: each as `fetch(page)` returned
+# it (page numbers from 1), parsed. It stops after a short page, or after the
+# first error, which it yields so that the caller can report it. collect_live
+# fetches with api_get; the unit tests pass canned pages.
+pub gen func repo_pages(fetch: fn(int): Result[string, string]): Iterable[Result[list[Any], string]] {
+    var page = 1;
+    var more = true;
+    while (more) {
+        let got = fetch(page).and_then(parse_repo_page);
+        yield got;
+        more = got.is_ok() and got.unwrap().len() >= PAGE_SIZE;
+        page += 1;
+    }
+}
+
+# A scratch directory from `mktemp -d` (path "" if that failed). As a
+# Closeable it is removed, with everything in it, when the `with` block that
+# opened it ends, also by a `return` from inside the block.
+pub class TempDir implements Closeable {
+    pub var path: string;
+
+    new() {
+        this.path = run(["mktemp", "-d"]).stdout.decode().trim();
+    }
+
+    pub func close(): void {
+        if (this.path.len() > 0) {
+            run(["rm", "-rf", this.path]);
+        }
+    }
+}
+
 func compare_text(a: string, b: string): int {
     return if (a < b) { -1 } else if (a > b) { 1 } else { 0 };
 }
@@ -145,91 +187,97 @@ pub func collect_live(owner: string, prefix: string, record: string): Collected 
     }
     let when = utc_stamp(realtimeNs() / 1000000000);
 
-    # The repository list, 100 a page, until a short page. Failing to list
-    # is the one error that stops the run.
+    # With --record, what was read goes into the recording too: save writes
+    # a text, keep copies a file from a clone (paths relative to `record`).
+    func save(rel: string, text: string): void {
+        if (record.len() > 0) {
+            write_file(record + "/" + rel, text);
+        }
+    }
+    func keep(src: string, rel: string): void {
+        if (record.len() > 0) {
+            copy_file(src, record + "/" + rel);
+        }
+    }
+
+    # The repository list. Failing to list is the one error that stops the
+    # run.
     var items: list[Any] = [];
-    var page = 1;
-    while (true) {
-        let text = match api_get(transport, "users/" + owner + "/repos?per_page=100&page=" + str(page)) {
-            Ok(t) => t,
-            Err(msg) => { return failed("cannot list the repositories of " + owner + ": " + msg); },
-        };
-        let got = match parse_repo_page(text) {
-            Ok(list) => list,
-            Err(msg) => { return failed("cannot list the repositories of " + owner + ": " + msg); },
-        };
-        for (item in got) {
-            items.push(item);
+    let pages = repo_pages(func(page: int): Result[string, string] {
+        return api_get(transport, "users/" + owner + "/repos?per_page=" + str(PAGE_SIZE) + "&page=" + str(page));
+    });
+    for (got in pages) {
+        match got {
+            Ok(page_items) => {
+                for (item in page_items) {
+                    items.push(item);
+                }
+            },
+            Err(msg) => {
+                return failed("cannot list the repositories of " + owner + ": " + msg);
+            },
         }
-        if (got.len() < 100) {
-            break;
-        }
-        page += 1;
     }
     let repos = select_repos(items, prefix);
 
-    let work = run(["mktemp", "-d"]).stdout.decode().trim();
-    if (work.len() == 0 or !isDir(work)) {
-        return failed("cannot create a temporary directory");
-    }
-    if (record.len() > 0) {
-        var meta: dict[string, Any] = {"owner": owner, "prefix": prefix, "recorded_at": when, "source": transport_phrase(transport) + " and shallow `git` clones"};
-        write_file(record + "/meta.json", stringifyIndented(meta, 2) + "\n");
-        write_file(record + "/repos.json", stringifyIndented(repos, 2) + "\n");
-    }
-
-    # Per repository: the latest run on the default branch, then a shallow
-    # clone for read_tree. Each failure becomes an "unknown" fact with its
-    # reason; with --record, what was read is saved in the recording layout.
     var facts: list[RepoFacts] = [];
-    var count = 0;
-    for (repo in repos) {
-        let info = repo_info(repo);
-        count += 1;
-        printErr("fleet-audit: [" + str(count) + "/" + str(repos.len()) + "] " + info.name);
-
-        let runs_path = "repos/" + owner + "/" + info.name + "/actions/runs?branch=" + info.default_branch + "&per_page=1";
-        let lookup = match api_get(transport, runs_path) {
-            Ok(text) => {
-                if (record.len() > 0) {
-                    write_file(record + "/runs/" + info.name + ".json", text);
-                }
-                parse_latest_run(text)
-            },
-            Err(msg) => RunLookup(state = "unknown", run = no_run(), error = msg),
-        };
-
-        # No prompts and no configured credential helper: the audit sees the
-        # repositories as an anonymous reader does, and never waits on input.
-        let dest = work + "/" + info.name;
-        let clone = run(["env", "GIT_TERMINAL_PROMPT=0", "git", "-c", "credential.helper=", "clone", "--quiet", "--depth", "1", "--branch", info.default_branch, "https://github.com/" + owner + "/" + info.name + ".git", dest]);
-        if (clone.exit_code == 0 and isDir(dest)) {
-            let tree = read_tree(dest);
-            if (record.len() > 0) {
-                for (rel in tree.files) {
-                    copy_file(dest + "/" + rel, record + "/trees/" + info.name + "/" + rel);
-                }
-            }
-            facts.push(facts_of(info, lookup, "found", tree, ""));
-        } else {
-            let reason = first_line(clone.stderr.decode());
-            let error = "git clone failed: " + (if (reason.len() > 0) { reason } else { "status " + str(clone.exit_code) });
-            if (record.len() > 0) {
-                write_file(record + "/trees/" + info.name + ".unavailable", error + "\n");
-            }
-            facts.push(facts_of(info, lookup, "unknown", empty_tree(), error));
+    with (work = TempDir()) {
+        if (work.path.len() == 0 or !isDir(work.path)) {
+            return failed("cannot create a temporary directory");
         }
-        run(["rm", "-rf", dest]);
-    }
-    run(["rm", "-rf", work]);
+        var meta: dict[string, Any] = {"owner": owner, "prefix": prefix, "recorded_at": when, "source": transport_phrase(transport) + " and shallow `git` clones"};
+        save("meta.json", stringifyIndented(meta, 2) + "\n");
+        save("repos.json", stringifyIndented(repos, 2) + "\n");
 
+        # Per repository: the latest run on the default branch, then a
+        # shallow clone for read_tree. Each failure becomes an "unknown" fact
+        # with its reason.
+        var count = 0;
+        for (repo in repos) {
+            let info = repo_info(repo);
+            count += 1;
+            printErr("fleet-audit: [" + str(count) + "/" + str(repos.len()) + "] " + info.name);
+
+            let runs_path = "repos/" + owner + "/" + info.name + "/actions/runs?branch=" + info.default_branch + "&per_page=1";
+            let lookup = match api_get(transport, runs_path) {
+                Ok(text) => {
+                    save("runs/" + info.name + ".json", text);
+                    parse_latest_run(text)
+                },
+                Err(msg) => RunLookup(state = "unknown", run = no_run(), error = msg),
+            };
+
+            # No prompts and no configured credential helper: the audit sees
+            # the repositories as an anonymous reader does, and never waits on
+            # input. Each clone is deleted as soon as it has been read (the
+            # `finally`), so the run needs room for one clone at a time.
+            let dest = work.path + "/" + info.name;
+            try {
+                let clone = run(["env", "GIT_TERMINAL_PROMPT=0", "git", "-c", "credential.helper=", "clone", "--quiet", "--depth", "1", "--branch", info.default_branch, "https://github.com/" + owner + "/" + info.name + ".git", dest]);
+                if (clone.exit_code == 0 and isDir(dest)) {
+                    let tree = read_tree(dest);
+                    for (rel in tree.files) {
+                        keep(dest + "/" + rel, "trees/" + info.name + "/" + rel);
+                    }
+                    facts.push(facts_of(info, lookup, "found", tree, ""));
+                } else {
+                    let reason = first_line(clone.stderr.decode());
+                    let error = "git clone failed: " + (if (reason.len() > 0) { reason } else { "status " + str(clone.exit_code) });
+                    save("trees/" + info.name + ".unavailable", error + "\n");
+                    facts.push(facts_of(info, lookup, "unknown", empty_tree(), error));
+                }
+            } finally {
+                run(["rm", "-rf", dest]);
+            }
+        }
+    }
     return Collected(ok = true, error = "", owner = owner, prefix = prefix, source = transport_phrase(transport) + " and shallow `git` clones", when = when, facts = facts);
 }
 
 func meta_text(meta: dict[string, Any], key: string, fallback: string): string {
     match meta.get(key) {
         Some(v) => {
-            return if (v is string) { v as string } else { fallback };
+            return (v as? string) ?? fallback;
         },
         None => {
             return fallback;

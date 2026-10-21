@@ -1,16 +1,34 @@
 @mode(host.scripted)
 
-# Unit tests for the offline collector (lib/collect.lpscr): the recorded
-# fleet's metadata, repositories and fact states, and its error messages.
+# Unit tests for the collector (lib/collect.lpscr): the recorded fleet's
+# metadata, repositories and fact states, its error messages, the paging of
+# the repository list (repo_pages, fed canned pages) and TempDir.
 #
 # Runtime: host.scripted, run by the test runner: `make test` interprets this
 # file with Stage0 (`loup-bootstrap test --no-parallel --file
 # tests/collect_test.lpscr`), one test per `func test_*()`, importing lib/
 # with relative imports. It is not part of the program. It reads the recorded
-# fleet in tests/fixtures/fleet; no network.
+# fleet in tests/fixtures/fleet and makes a directory with mktemp; no
+# network.
 
-from debug.assert import (expect, expectEq);
-from ..lib.collect import (Collected, collect_fixtures, transport_phrase);
+from debug.assert import (expect, expectEq, expectSome);
+from io.fs import (isDir, createDir);
+from system.collections import (find);
+from ..lib.facts import (RepoFacts);
+from ..lib.collect import (Collected, collect_fixtures, transport_phrase, repo_pages, TempDir, PAGE_SIZE);
+
+# The facts collected about the repository called `name`, if any. (Stage0
+# infers find's type parameter from a typed local, not from `c.facts`.)
+func fact_named(c: Collected, name: string): Option[RepoFacts] {
+    let facts: list[RepoFacts] = c.facts;
+    return find(facts, func(f: RepoFacts): bool { return f.info.name == name; });
+}
+
+# "RUN_STATE/TREE_STATE" of a repository that must have been collected.
+func states_of(c: Collected, name: string): string {
+    let f = expectSome(fact_named(c, name), name + " collected");
+    return f.run_state + "/" + f.tree_state;
+}
 
 func test_collect_fixtures(): void {
     let c = collect_fixtures("tests/fixtures/fleet");
@@ -20,13 +38,10 @@ func test_collect_fixtures(): void {
     expect(c.source.startsWith("a recording in `tests/fixtures/fleet` of the GitHub REST API"), "source");
     expectEq(c.facts.len(), 12, "repositories");
     expectEq(c.facts[0].info.name, "loup-cmd-cat", "sorted");
-    var states: list[string] = [];
-    for (f in c.facts) {
-        if (f.info.name == "loup-cmd-ls" or f.info.name == "loup-cmd-which" or f.info.name == "loup-cmd-xxd") {
-            states.push(f.info.name + " " + f.run_state + "/" + f.tree_state);
-        }
-    }
-    expectEq(states.join(", "), "loup-cmd-ls unknown/found, loup-cmd-which found/unknown, loup-cmd-xxd none/found", "states");
+    expectEq(states_of(c, "loup-cmd-ls"), "unknown/found", "no runs file");
+    expectEq(states_of(c, "loup-cmd-which"), "found/unknown", "no tree");
+    expectEq(states_of(c, "loup-cmd-xxd"), "none/found", "no runs yet");
+    expect(fact_named(c, "loup-cmd-old").is_none(), "archived: not collected");
 }
 
 func test_collect_errors(): void {
@@ -39,4 +54,47 @@ func test_collect_errors(): void {
 func test_transport_phrase(): void {
     expectEq(transport_phrase("gh"), "the GitHub REST API through `gh api` (authenticated)", "gh");
     expectEq(transport_phrase("curl"), "the GitHub REST API through `curl` (unauthenticated)", "curl");
+}
+
+# A page of `n` repository objects, as the API sends it.
+func page_of(n: int): string {
+    var objects: list[string] = [];
+    for (k in 0..n) {
+        objects.push("{\"name\": \"loup-cmd-r" + str(k) + "\"}");
+    }
+    return "[" + objects.join(", ") + "]";
+}
+
+# What repo_pages yields when page N is answered with answers[N - 1]: the
+# size of each page, or "error: MESSAGE".
+func paging(answers: list[Result[string, string]]): string {
+    var seen: list[string] = [];
+    let pages = repo_pages(func(page: int): Result[string, string] { return answers[page - 1]; });
+    for (got in pages) {
+        match got {
+            Ok(items) => { seen.push(str(items.len())); },
+            Err(msg) => { seen.push("error: " + msg); },
+        }
+    }
+    return seen.join(", ");
+}
+
+func test_repo_pages(): void {
+    let full: Result[string, string] = Ok(page_of(PAGE_SIZE));
+    expectEq(paging([full, full, Ok(page_of(3))]), "100, 100, 3", "until a short page");
+    expectEq(paging([full, Ok("[]")]), "100, 0", "an empty last page");
+    expectEq(paging([Ok(page_of(2)), full]), "2", "a short first page is the last");
+    expectEq(paging([full, Err("HTTP 502"), full]), "100, error: HTTP 502", "stops at a failed request");
+    expectEq(paging([Ok("{\"message\": \"Bad credentials\"}")]), "error: Bad credentials", "stops at an API error");
+}
+
+func test_temp_dir_is_removed(): void {
+    var path = "";
+    with (dir = TempDir()) {
+        path = dir.path;
+        createDir(path + "/loup-cmd-x/specs");
+        writeText(path + "/loup-cmd-x/specs/a.md", "a\n");
+        expect(isDir(path + "/loup-cmd-x/specs"), "usable inside the block");
+    }
+    expect(path.len() > 0 and !isDir(path), "removed with its contents");
 }

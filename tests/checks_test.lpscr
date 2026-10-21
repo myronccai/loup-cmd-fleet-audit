@@ -13,7 +13,7 @@
 from debug.assert import (expect, expectEq);
 from ..lib.facts import (RepoFacts, RepoInfo, RunInfo, TreeFacts, no_run, empty_tree);
 from ..lib.tree import (read_tree);
-from ..lib.checks import (Audit, Check, audit, check_named, check_topics, check_pin, check_version, check_ci);
+from ..lib.checks import (Audit, Check, audit, check_named, check_topics, check_pin, check_version, check_ci, group_topics);
 
 let GOOD_TOPICS: list[string] = ["loup", "loup-example", "loup-host-scripted"];
 
@@ -38,6 +38,11 @@ func test_topics(): void {
     expectEq(said(check_topics(["loup-example", "loup-host-dual"])), "fail: missing loup", "missing");
     expectEq(said(check_topics(["loup", "loup-example"])), "fail: no group topic", "no group");
     expectEq(said(check_topics(["loup", "loup-example", "loup-host-dual", "loup-freestanding"])), "fail: several group topics: loup-host-dual, loup-freestanding", "two groups");
+}
+
+func test_group_topics(): void {
+    expectEq(group_topics(["loup", "loup-windows-command", "x", "loup-host-dual"]).join(","), "loup-windows-command,loup-host-dual", "in their order");
+    expectEq(group_topics(["loup", "loup-example"]).len(), 0, "none");
 }
 
 func test_pin_and_version(): void {

@@ -2,16 +2,19 @@
 
 # Unit tests for read_tree (lib/tree.loup) over the recorded trees: a complete
 # command, a scripted project, a fresh template repository and deliberate
-# mismatches.
+# mismatches; and over a tree made in a TempDir with an incomplete spec.
 #
 # Runtime: host.scripted, run by the test runner: `make test` interprets this
 # file with Stage0 (`loup-bootstrap test --no-parallel --file
 # tests/tree_test.lpscr`), one test per `func test_*()`, importing lib/ with
 # relative imports. It is not part of the program. It reads the recorded fleet
-# in tests/fixtures/fleet; no network.
+# in tests/fixtures/fleet and makes a directory with mktemp; no network.
 
 from debug.assert import (expect, expectEq);
+from io.fs import (createDir);
+from io.path import (dirname);
 from ..lib.tree import (read_tree);
+from ..lib.collect import (TempDir);
 
 let TREES: string = "tests/fixtures/fleet/trees/";
 
@@ -46,4 +49,18 @@ func test_fresh_template_repository(): void {
 func test_mismatches_are_read_as_they_are(): void {
     expectEq(read_tree(TREES + "loup-cmd-cut").ci_loup, "1.25.1", "pin");
     expectEq(read_tree(TREES + "loup-cmd-grep").app_version, "0.2.0", "version");
+}
+
+func test_incomplete_spec_does_not_count(): void {
+    with (dir = TempDir()) {
+        let rels = ["specs/full/requirements.md", "specs/full/design.md", "specs/full/tasks.md", "specs/half/requirements.md", "specs/half/design.md"];
+        for (rel in rels) {
+            createDir(dirname(dir.path + "/" + rel));
+            writeText(dir.path + "/" + rel, "# x\n");
+        }
+        let t = read_tree(dir.path);
+        expectEq(t.specs.join(","), "full", "only the complete spec");
+        expect(t.files.contains("specs/full/tasks.md"), "its files are evidence");
+        expect(!t.files.contains("specs/half/design.md"), "the incomplete spec's are not");
+    }
 }
